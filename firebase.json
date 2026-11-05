@@ -3,6 +3,10 @@
     "site": "one-button-jay",
     "public": ".",
     "ignore": ["firebase.json", "**/.*", "**/.*/**", "**/node_modules/**", "*.md", "*.ps1"],
+    "headers": [
+      { "source": "**/*.@(html|js|json)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+      { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+    ],
     "rewrites": [
       { "source": "/api/chat", "function": "oneButton", "region": "us-central1" },
       { "source": "/api/transcribe", "function": "oneButton", "region": "us-central1" },

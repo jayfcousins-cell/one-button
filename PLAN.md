@@ -53,7 +53,12 @@ Buy by itself with only that shop's items.
 5. **Map and timeline.** Places with their tasks on a map, timed tasks along a day or week strip.
 6. **Phone apps.** Calendar, messages, Obsidian, maps, one at a time, each switched on by Jay,
    each with a clear line on what works from a locked phone and what needs unlocking.
-7. **Deeper interviews.** Optional transcription and summary, only when Jay asks for it.
+7. **Interviews to the vault, with Claude as the bridge.** Moved up: next after Stage 1. Nothing is turned into text unless Jay taps Process.
+   - **A. Share first.** Stopping an interview shows a card: *Share with them* (audio to WhatsApp, Telegram, anything), *Process*, *Later*. The lock screen gets a cog that asks for fingerprint, then opens Settings.
+   - **B. Process.** Audio goes to the server, long ones cut into pieces, turned into text, then Claude writes a note: title, who, summary, key points, quotes, actions, project ideas. The card then offers *Share summary* (text), the actions with ticks (ticked ones become tasks), and *Ask Claude*.
+   - **C. To the laptop.** Note and audio wait in One Button's private online store. A laptop helper checks every 5 minutes (and on wake) and files them into `Vaults/jay/Interviews/<date> <name>/` (note + audio), linking any existing `Jay x <name>` folder. The online copy is deleted once the laptop has it.
+   - **D. Ask Claude.** On any interview, speak a request ("turn this into a project plan", "draft a follow-up for Sam"). The laptop helper runs Claude with the transcript and the vault, saves the result beside the note, adds any tasks to the list, and the phone shows the result. Guard rails: interview words come from other people, so the helper may only read the vault, write into that interview's folder and add tasks; it cannot send messages, delete, or run commands. Sending always stays with Jay's Share buttons. For live back-and-forth, the Claude app's Remote Control already reaches a laptop session.
+   - Limits: the laptop must be awake for C and D (requests wait until it is). Tell people when recording.
 
 ## Open questions
 
