@@ -173,6 +173,7 @@
   .lock.int-armed #lk-int,.lock.interview #lk-int{visibility:visible}
   .chk{display:flex;gap:10px;align-items:center;font-size:15px;margin:4px 0 16px;cursor:pointer}
   .chk input{width:20px;height:20px;accent-color:var(--ink)}
+  .upd{display:block;text-align:center;margin:28px 0 4px;padding:12px;font-family:'IBM Plex Mono';font-size:11px;letter-spacing:1px;color:var(--muted);text-decoration:none;opacity:.6}
   .sec-lbl{font-family:'IBM Plex Mono';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
   .lk-int-time{display:none;font-size:13px;letter-spacing:0}
   .lock.interview #lk-int{border-color:var(--fix);background:var(--fix)}
@@ -276,6 +277,7 @@
       <button id="c-add">Add contact</button>
     </div>
     <p class="note">Import pulls in whoever you pick from your phone (names, numbers, emails). Phone numbers cover WhatsApp, Signal and SMS; add a Telegram @handle by hand. Tap a channel tag to star someone's main one; it also learns from the channels you use.</p>
+    <a class="upd" id="upd" href="https://github.com/jayfcousins-cell/one-button-android/releases/latest" style="display:none">check for app update</a>
   </div>
 </div>
 
@@ -734,7 +736,7 @@ $('#set-save').onclick=()=>{const k=$('#set-key').value.trim(); if(k) LS.set('ob
 function openSheet(sel){ closeSheets(); $(sel).classList.add('open');
   if(sel==='#sheet-notes')renderNotes();
   if(sel==='#sheet-settings'){$('#set-key').value='';$('#key-field').style.display=NATIVE?'none':'';
-    $('#set-lockfull').checked=LS.get('ob-lockfull',true);renderInterviews();renderContacts();}}
+    $('#set-lockfull').checked=LS.get('ob-lockfull',true);renderInterviews();renderContacts();$('#upd').style.display=NATIVE?'block':'none';}}
 function closeSheets(){document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));}
 $('#open-notes').onclick=()=>openSheet('#sheet-notes');
 $('#open-settings').onclick=()=>openSheet('#sheet-settings');
