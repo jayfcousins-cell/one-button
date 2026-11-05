@@ -148,6 +148,14 @@
   .lk-item{display:flex;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.12);transition:opacity .2s,transform .2s}
   .lk-item.gone{opacity:0;transform:translateX(24px)}
   .lk-item .ndot{flex:none}
+  .lk-group{width:100%;min-height:56px;display:flex;align-items:center;gap:12px;padding:0;background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.12);color:#FFFFFF;cursor:pointer;text-align:left}
+  .lk-group .ndot{flex:none;width:10px;height:10px}
+  .lk-gname{flex:1;font-family:"Inter Tight",sans-serif;font-weight:700;font-size:20px}
+  .lk-gcount{font-family:"IBM Plex Mono",monospace;font-size:13px;color:#B8B8B8}
+  .lk-chev{transition:transform .2s;color:#B8B8B8}
+  .lk-group.open .lk-chev{transform:rotate(180deg)}
+  .lk-group:focus-visible{outline:2px solid var(--spark);outline-offset:-2px}
+  .lk-group + .lk-item,.lk-item + .lk-item{padding-left:22px}
   .lk-text{flex:1;font-size:18px;line-height:1.4}
   .lk-tick{flex:none;width:48px;height:48px;border:1px solid rgba(255,255,255,.3);background:transparent;color:#FFFFFF;display:grid;place-items:center;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
   .lk-tick:active{background:var(--spark);color:#1A1A1A;border-color:var(--spark)}
@@ -717,13 +725,25 @@ function renderLock(){
   $('#lk-count').textContent=items.length?items.length+' open':'';
   if(!items.length){lkList.innerHTML='<div class="lk-empty">Nothing open. Tap the button and say what needs doing.</div>';return;}
   if(!LS.get('ob-lockfull',true)){lkList.innerHTML=`<div class="lk-empty">${items.length} ${items.length>1?'tasks':'task'} open. Open One Button to see them.</div>`;return;}
+  // One closed row per kind of task (Buy, Fix, Check, Do); tap to open. Open rows are remembered.
   lkList.innerHTML='';
-  for(const n of items){
-    const cat=CAT[n.cat]||CAT.do;
-    const row=document.createElement('div');row.className='lk-item';
-    row.innerHTML=`<span class="ndot" style="background:${cat.c}"></span><div class="lk-text">${escapeHtml(n.text)}</div><button class="lk-tick" aria-label="Mark done">${ICON_TICK}</button>`;
-    row.querySelector('.lk-tick').onclick=()=>{n.done=true;save();row.classList.add('gone');setTimeout(renderNotes,220);};
-    lkList.appendChild(row);
+  const open=LS.get('ob-lockopen',{});
+  for(const key of ['buy','fix','check','do']){
+    const group=items.filter(n=>(CAT[n.cat]?n.cat:'do')===key);
+    if(!group.length) continue;
+    const cat=CAT[key], isOpen=!!open[key];
+    const head=document.createElement('button');
+    head.className='lk-group'+(isOpen?' open':'');head.setAttribute('aria-expanded',isOpen);
+    head.innerHTML=`<span class="ndot" style="background:${cat.c}"></span><span class="lk-gname">${cat.label}</span><span class="lk-gcount">${group.length}</span><svg class="lk-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
+    head.onclick=()=>{open[key]=!isOpen;LS.set('ob-lockopen',open);renderLock();};
+    lkList.appendChild(head);
+    if(!isOpen) continue;
+    for(const n of group){
+      const row=document.createElement('div');row.className='lk-item';
+      row.innerHTML=`<div class="lk-text">${escapeHtml(n.text)}</div><button class="lk-tick" aria-label="Mark done">${ICON_TICK}</button>`;
+      row.querySelector('.lk-tick').onclick=()=>{n.done=true;save();row.classList.add('gone');setTimeout(renderNotes,220);};
+      lkList.appendChild(row);
+    }
   }
 }
 function showLock(){stopSaver();closeSheets();lock.classList.add('on');lockClock();

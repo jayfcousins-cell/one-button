@@ -29,6 +29,12 @@ Every task can carry a **when** and a **where**, and either can bring it to the 
 - Location fences work at about 100 metres and can take a few minutes to notice arrival: right
   for "at the market", not for "in the kitchen".
 
+## The lock screen list
+
+Tasks are grouped into one row per kind (Buy, Fix, Check, Do), each with a count, closed by
+default. Tapping a row opens it. Done 5 Nov 2026. In the Place stage, arriving at a shop opens
+Buy by itself with only that shop's items.
+
 ## Stages
 
 1. **Foundation.** Tasks move into Jay's own private store, so they sync between phone and
