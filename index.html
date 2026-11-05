@@ -174,6 +174,18 @@
   .chk{display:flex;gap:10px;align-items:center;font-size:15px;margin:4px 0 16px;cursor:pointer}
   .chk input{width:20px;height:20px;accent-color:var(--ink)}
   .upd{display:block;text-align:center;margin:28px 0 4px;padding:12px;font-family:'IBM Plex Mono';font-size:11px;letter-spacing:1px;color:var(--muted);text-decoration:none;opacity:.6}
+  .sheet.iv-card{z-index:27}
+  .iv-meta{font-size:12.5px;color:var(--muted);margin:0 0 12px}
+  .iv-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .iv-row .tbtn,.iv-row .save{flex:1;margin:0}
+  .iv-h{font-family:'IBM Plex Mono';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:24px 0 8px}
+  .iv-sum{font-size:16px;line-height:1.6;margin:4px 0 0}
+  .iv-li{font-size:15px;line-height:1.5;padding:8px 0;border-bottom:1px solid var(--line)}
+  .iv-act{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line);font-size:15px;line-height:1.45;cursor:pointer}
+  .iv-act input{margin-top:3px;width:18px;height:18px;flex:none}
+  .iv-ask{width:100%;min-height:76px;font:inherit;font-size:16px;padding:10px;border:1px solid var(--line);background:#fff;border-radius:0;box-sizing:border-box;color:var(--ink)}
+  .iv-ans{white-space:pre-wrap;font-size:14.5px;line-height:1.55;background:#fff;border:1px solid var(--line);padding:12px;margin-top:6px}
+  .iv-tag{font-family:'IBM Plex Mono';font-size:10.5px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase}
   .sec-lbl{font-family:'IBM Plex Mono';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
   .lk-int-time{display:none;font-size:13px;letter-spacing:0}
   .lock.interview #lk-int{border-color:var(--fix);background:var(--fix)}
@@ -192,6 +204,7 @@
       <button class="ico-btn" id="open-notes" title="Notices">&#9636;</button>
       <button class="ico-btn" id="open-saver" title="Screensaver">&#9673;</button>
       <button class="ico-btn" id="open-lock" title="Lock screen view" aria-label="Lock screen view">&#9638;</button>
+      <button class="ico-btn" id="open-ivs" title="Interviews" aria-label="Interviews" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
       <button class="ico-btn" id="open-settings" title="Settings">&#9881;</button>
     </div>
   </div>
@@ -259,12 +272,6 @@
     <label class="chk"><input type="checkbox" id="set-lockfull" /> Show the full list on the lock screen</label>
     <button class="save" id="set-save">Save</button>
     <p class="note">Off: the lock screen shows only how many tasks are open.</p>
-    <div id="iv-wrap" style="display:none">
-      <div style="height:26px"></div>
-      <label class="sec-lbl">Interviews</label>
-      <div id="iv-list"></div>
-      <p class="note">Kept privately inside One Button. Share sends a copy to the app you pick.</p>
-    </div>
     <div style="height:26px"></div>
     <label style="font-family:'IBM Plex Mono';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">Contacts &amp; channels</label>
     <div id="contacts-list"></div>
@@ -279,6 +286,19 @@
     <p class="note">Import pulls in whoever you pick from your phone (names, numbers, emails). Phone numbers cover WhatsApp, Signal and SMS; add a Telegram @handle by hand. Tap a channel tag to star someone's main one; it also learns from the channels you use.</p>
     <a class="upd" id="upd" href="https://github.com/jayfcousins-cell/one-button-android/releases/latest" style="display:none">check for app update</a>
   </div>
+</div>
+
+<div class="sheet" id="sheet-ivs">
+  <div class="sheet-bar"><h2>Interviews</h2><button class="sheet-x" data-close>&times;</button></div>
+  <div class="sheet-body">
+    <div id="iv-list"></div>
+    <p class="note">Kept privately inside One Button until you share or process one. Processed interviews go to your vault, Interviews folder, by themselves when the laptop is on.</p>
+  </div>
+</div>
+
+<div class="sheet iv-card" id="sheet-iv">
+  <div class="sheet-bar"><h2 id="iv-title">Interview</h2><button class="sheet-x" data-close>&times;</button></div>
+  <div class="sheet-body" id="iv-body"></div>
 </div>
 
 <div class="saver" id="saver">
@@ -736,13 +756,17 @@ $('#set-save').onclick=()=>{const k=$('#set-key').value.trim(); if(k) LS.set('ob
 function openSheet(sel){ closeSheets(); $(sel).classList.add('open');
   if(sel==='#sheet-notes')renderNotes();
   if(sel==='#sheet-settings'){$('#set-key').value='';$('#key-field').style.display=NATIVE?'none':'';
-    $('#set-lockfull').checked=LS.get('ob-lockfull',true);renderInterviews();renderContacts();$('#upd').style.display=NATIVE?'block':'none';}}
+    $('#set-lockfull').checked=LS.get('ob-lockfull',true);renderContacts();$('#upd').style.display=NATIVE?'block':'none';}
+  if(sel==='#sheet-ivs'){renderInterviews();ivRefresh();}}
 function closeSheets(){document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));}
 $('#open-notes').onclick=()=>openSheet('#sheet-notes');
 $('#open-settings').onclick=()=>openSheet('#sheet-settings');
+$('#open-ivs').onclick=()=>openSheet('#sheet-ivs');
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{
   const noteOpen=$('#sheet-note').classList.contains('open');
+  const ivBack=$('#sheet-iv').classList.contains('open')&&ivFromList; ivOpen=null;
   closeSheets(); if(noteOpen){ $('#sheet-notes').classList.add('open'); renderNotes(); }
+  if(ivBack) openSheet('#sheet-ivs');
 });
 
 const saver=$('#saver'); let saverCycle,idle;
@@ -840,7 +864,8 @@ function intUI(on){intOn=on;lock.classList.toggle('interview',on);clearInterval(
 window.obInterview=(state,startedAt,info)=>{
   if(state==='on'){intStart=startedAt||Date.now();intUI(true);return;}
   intUI(false);
-  lkStatus.textContent=state==='saved'?'saved privately, see Settings, Interviews':'could not record: '+(info||'unknown');
+  lkStatus.textContent=state==='saved'?'interview saved':'could not record: '+(info||'unknown');
+  if(state==='saved'&&info) openIv(info,false);
 };
 function interviewToggle(){
   if(lkLive){showToast('Finish the task first');return;}
@@ -869,16 +894,26 @@ $('#lk-orb').onclick=()=>{
   lkTapT=setTimeout(()=>{const n=lkTaps;lkTaps=0;if(n===1)lockRecord();},350);
 };
 
+/* Interviews (stage 7). Nothing leaves the phone until Jay taps Share or Process. A processed
+   interview's note lives on the server until the laptop helper files it into the vault; Ask
+   Claude requests wait there for the laptop too. IVS caches what the server last said. */
+if(NATIVE&&NATIVE.listInterviews) $('#open-ivs').style.display='';
+let IVS=LS.get('ob-ivs',{}), ASKS=LS.get('ob-asks',[]), ivOpen=null, ivFromList=false, ivTimer=null;
+const ivId=name=>String(name).replace(/\.m4a$/,'');
+const ivFiles=()=>{try{return JSON.parse(NATIVE.listInterviews());}catch{return [];}};
+const ivWhen=ts=>new Date(ts).toLocaleString([], {weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+function ivLabel(f){const s=IVS[ivId(f.name)]||{};
+  return s.status==='done'?(s.collected?'in your vault':'note ready'):s.status==='working'?'working':s.status==='error'?'not processed':'';}
+
 function renderInterviews(){
-  const wrap=$('#iv-wrap');
-  if(!(NATIVE&&NATIVE.listInterviews)){wrap.style.display='none';return;}
-  let list=[];try{list=JSON.parse(NATIVE.listInterviews());}catch{}
-  wrap.style.display='';const box=$('#iv-list');
-  if(!list.length){box.innerHTML='<div class="empty" style="padding:14px 0">No interviews yet.</div>';return;}
+  const box=$('#iv-list'); if(!NATIVE||!NATIVE.listInterviews){box.innerHTML='';return;}
+  const list=ivFiles();
+  if(!list.length){box.innerHTML='<div class="empty" style="padding:14px 0">No interviews yet. Tap the record button three times on the lock screen to start one.</div>';return;}
   box.innerHTML='';
   for(const f of list){
-    const row=document.createElement('div');row.className='note-item';
-    row.innerHTML=`<div class="ntext">${escapeHtml(f.name)}<div class="nmeta">${new Date(f.ts).toLocaleString()} . ${(f.size/1048576).toFixed(1)} MB</div></div><button class="tbtn">Share</button><button class="ndone" aria-label="Delete">&times;</button>`;
+    const s=IVS[ivId(f.name)]||{}, row=document.createElement('div');row.className='note-item';
+    row.innerHTML=`<div class="ntext">${escapeHtml(s.title||ivWhen(f.ts))}<div class="nmeta">${s.title?ivWhen(f.ts)+' . ':''}${(f.size/1048576).toFixed(1)} MB${ivLabel(f)?' . '+ivLabel(f):''}</div></div><button class="tbtn">Share</button><button class="ndone" aria-label="Delete">&times;</button>`;
+    row.querySelector('.ntext').onclick=()=>openIv(f.name,true);
     row.querySelector('.tbtn').onclick=()=>NATIVE.shareInterview(f.name);
     row.querySelector('.ndone').onclick=()=>{
       if(row.dataset.sure){NATIVE.deleteInterview(f.name);renderInterviews();}
@@ -887,6 +922,100 @@ function renderInterviews(){
     box.appendChild(row);
   }
 }
+
+async function ivRefresh(){
+  if(!obKey())return;
+  try{const r=await fetch('/api/interview/list',{method:'POST',headers:obHeaders(),body:'{}'});
+    if(!r.ok)return; const d=await r.json();
+    for(const iv of d.interviews||[]){const mine=IVS[iv.id]||{};
+      if(mine.status==='working'&&iv.status!=='done'&&iv.status!=='error')continue;
+      IVS[iv.id]={...mine,...iv};}
+    ASKS=d.asks||[]; LS.set('ob-ivs',IVS); LS.set('ob-asks',ASKS);
+    if($('#sheet-ivs').classList.contains('open'))renderInterviews();
+    if(ivOpen)renderIv();
+  }catch{}
+}
+
+function openIv(name,fromList){ivOpen=name;ivFromList=fromList;openSheet('#sheet-iv');renderIv();ivRefresh();
+  clearInterval(ivTimer);ivTimer=setInterval(()=>{if(!ivOpen){clearInterval(ivTimer);return;}if(!document.hidden)ivRefresh();},20000);}
+
+function renderIv(){
+  const name=ivOpen; if(!name)return;
+  const id=ivId(name), s=IVS[id]||{}, f=ivFiles().find(x=>x.name===name)||{ts:Date.now(),size:0}, b=$('#iv-body');
+  $('#iv-title').textContent=s.title||'Interview';
+  let h=`<p class="iv-meta">${ivWhen(f.ts)} . ${(f.size/1048576).toFixed(1)} MB${s.people&&s.people.length?' . with '+escapeHtml(s.people.join(', ')):''}</p>
+    <div class="iv-row"><button class="save" id="iv-share">Share recording with them</button></div>`;
+  if(s.status==='working') h+=`<p class="note">Turning it into a note. This takes about a minute; you can close this and come back.</p>`;
+  else if(s.status!=='done') h+=`<div class="iv-row"><button class="tbtn" id="iv-proc">Process: summary, actions, vault</button></div>
+    <p class="note">${s.status==='error'?escapeHtml(s.error||'That did not work.')+' Tap to try again. ':''}Sends this recording once to be turned into text, then files it in your vault.</p>`;
+  else{
+    h+=`<div class="iv-h">Summary</div><p class="iv-sum">${escapeHtml(s.summary||'(no summary)')}</p>
+      <div class="iv-row"><button class="tbtn" id="iv-sharesum">Share summary</button></div>`;
+    if((s.actions||[]).length){
+      h+=`<div class="iv-h">Actions</div>`;
+      s.actions.forEach((a,i)=>{const added=(s.added||{})[i];
+        h+=`<label class="iv-act"><input type="checkbox" data-act="${i}" ${added?'checked disabled':''}><span>${escapeHtml(a.text)}${a.due?` <span class="iv-tag">${escapeHtml(a.due)}</span>`:''}${added?' <span class="iv-tag">on your list</span>':''}</span></label>`;});
+      h+=`<div class="iv-row"><button class="tbtn" id="iv-addacts">Add ticked to my list</button></div>`;
+    }
+    if((s.points||[]).length) h+=`<div class="iv-h">Key points</div>`+s.points.map(p=>`<div class="iv-li">${escapeHtml(p)}</div>`).join('');
+    if((s.projects||[]).length){
+      h+=`<div class="iv-h">Projects to start with Claude</div>`;
+      s.projects.forEach((p,i)=>{h+=`<div class="iv-li"><b>${escapeHtml(p.name)}</b> ${escapeHtml(p.idea)}<div class="iv-row"><button class="tbtn" data-proj="${i}">Ask Claude to start this</button></div></div>`;});
+    }
+    h+=`<div class="iv-h">Ask Claude</div>
+      <textarea class="iv-ask" id="iv-asktext" placeholder="e.g. draft a follow-up message, or turn this into a project plan"></textarea>
+      <div class="iv-row"><button class="save" id="iv-asksend">Send to Claude</button></div>
+      <p class="note">Claude works on your laptop with your vault and this interview. The answer shows here and is saved beside the note.</p>`;
+    const mine=ASKS.filter(a=>a.interview===id);
+    for(const a of mine){
+      h+=`<div class="iv-li"><div class="iv-tag">${a.status==='done'?'Claude answered':'waiting for your laptop'}</div>${escapeHtml(a.text)}`;
+      if(a.status==='done') h+=`<div class="iv-ans">${escapeHtml(a.answer)}</div><div class="iv-row"><button class="tbtn" data-shareans="${escapeHtml(a.id)}">Share answer</button></div>${a.tasks?`<p class="note">Added ${a.tasks} task${a.tasks>1?'s':''} to your list.</p>`:''}`;
+      h+='</div>';
+    }
+    h+=`<p class="note">${s.collected?'In your vault: '+escapeHtml(s.folder||'Interviews'):'Goes to your vault, Interviews folder, next time your laptop is on.'}</p>`;
+  }
+  b.innerHTML=h;
+  $('#iv-share').onclick=()=>NATIVE&&NATIVE.shareInterview(name);
+  const proc=$('#iv-proc'); if(proc) proc.onclick=()=>ivProcess(name,f.ts);
+  const ss=$('#iv-sharesum'); if(ss) ss.onclick=()=>ivShareText(s.title+'\n\n'+s.summary+((s.points||[]).length?'\n\n'+s.points.map(p=>'- '+p).join('\n'):''));
+  const aa=$('#iv-addacts'); if(aa) aa.onclick=()=>{
+    const now=Date.now(); let n=0; s.added=s.added||{};
+    b.querySelectorAll('[data-act]').forEach(c=>{const i=+c.dataset.act; if(!c.checked||s.added[i])return;
+      const a=s.actions[i]; notes.unshift({id:now+n,text:a.text,cat:'do',done:false,ts:now+n,subs:[],due:a.due||'',place:''}); s.added[i]=1; n++;});
+    if(!n){showToast('Tick the ones you want first');return;}
+    IVS[id]=s; LS.set('ob-ivs',IVS); save(); renderNotes(); showToast('Added '+n+' to your list'); renderIv();
+  };
+  b.querySelectorAll('[data-proj]').forEach(x=>x.onclick=()=>{const p=s.projects[+x.dataset.proj];
+    $('#iv-asktext').value='Start a project from this conversation: '+p.name+'. '+p.idea+' Give me a short plan with first steps, and list any tasks for me.';
+    $('#iv-asktext').scrollIntoView({block:'center'});});
+  const send=$('#iv-asksend'); if(send) send.onclick=async()=>{
+    const text=$('#iv-asktext').value.trim(); if(!text){showToast('Say or type what you want first');return;}
+    send.disabled=true;
+    try{const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({id,text})});
+      if(!r.ok)throw 0; ASKS.unshift(await r.json()); LS.set('ob-asks',ASKS); showToast('Sent to Claude'); renderIv();
+    }catch{send.disabled=false;showToast('Could not send, try again');}
+  };
+  b.querySelectorAll('[data-shareans]').forEach(x=>x.onclick=()=>{const a=ASKS.find(q=>q.id===x.dataset.shareans); if(a) ivShareText(a.answer);});
+}
+
+function ivShareText(t){
+  if(NATIVE&&NATIVE.shareText) NATIVE.shareText(t);
+  else if(navigator.share) navigator.share({text:t}).catch(()=>{});
+  else navigator.clipboard.writeText(t).then(()=>showToast('Copied'));
+}
+
+function ivProcess(name,ts){
+  if(!(NATIVE&&NATIVE.processInterview)){showToast('Update the app to process interviews');return;}
+  const id=ivId(name); IVS[id]={...(IVS[id]||{}),status:'working'}; LS.set('ob-ivs',IVS);
+  NATIVE.processInterview(name,String(ts||Date.now())); renderIv(); renderInterviews();
+}
+// The phone app reports back here when the upload and note are finished.
+window.obIvDone=(name,code,text)=>{
+  const id=ivId(name); let d={}; try{d=JSON.parse(text);}catch{}
+  IVS[id]=code===200?{...(IVS[id]||{}),...d}:{...(IVS[id]||{}),status:'error',error:d.error||'Could not reach the server.'};
+  LS.set('ob-ivs',IVS); renderInterviews(); if(ivOpen===name)renderIv();
+  if(code===200) showToast('Interview note ready');
+};
 lkInt.onclick=interviewToggle;
 // On the phone, the app asks for fingerprint or PIN and hides this view once unlocked.
 $('#lk-phone').onclick=()=>{if(NATIVE)NATIVE.closeLock();else hideLock();};
