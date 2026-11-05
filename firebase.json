@@ -2,7 +2,7 @@
   "hosting": {
     "site": "one-button-jay",
     "public": ".",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "*.md"],
     "rewrites": [
       { "source": "/api/chat", "function": "oneButton", "region": "us-central1" },
       { "source": "/api/transcribe", "function": "oneButton", "region": "us-central1" },
