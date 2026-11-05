@@ -37,19 +37,23 @@ Buy by itself with only that shop's items.
 
 ## Stages
 
-1. **Foundation.** Tasks move into Jay's own private store, so they sync between phone and
-   browser and survive a reinstall. Tasks gain when and where fields. The phone starts noting
-   where each task was said and where each one is ticked off, so the patterns are there before
-   they are needed. Current phone tasks are copied across and checked before switching.
-2. **Time.** Loud alarms set by voice, repeats, snooze.
-3. **Place.** Suggested places, arrival alerts ("At the market: eggs, tomatoes"), and a
+1. **Foundation.** Tasks move into Jay's own private store on the server, so they sync between
+   phone and browser and survive a reinstall. Tasks gain when and where fields. The phone starts
+   noting where each task was said and where each one is ticked off (kept on the phone only), so
+   the patterns are there before they are needed. Current phone tasks are copied up on first sync.
+   The store is shaped as lists with members from day one, so sharing needs no rebuild.
+2. **Sharing and projects.** Share lists with other people, starting with a two-person prototype
+   (Jay and his ex, so she can add tasks for him and things are clearer between them). Each person
+   signs in as themselves, ideally with Weave login, so the server knows who added what and Jay can
+   remove access at any time. Shared lists see only their own tasks, never Jay's places or patterns.
+   Plug tasks into Jay's projects (Weave, Canopy, Dahab and others) as their own lists.
+3. **Time.** Loud alarms set by voice, repeats, snooze.
+4. **Place.** Suggested places, arrival alerts ("At the market: eggs, tomatoes"), and a
    **Here and now** list at the top of the lock screen.
-4. **Map and timeline.** Places with their tasks on a map, timed tasks along a day or week strip.
-5. **Phone apps.** Calendar, messages, Obsidian, maps, one at a time, each switched on by Jay,
+5. **Map and timeline.** Places with their tasks on a map, timed tasks along a day or week strip.
+6. **Phone apps.** Calendar, messages, Obsidian, maps, one at a time, each switched on by Jay,
    each with a clear line on what works from a locked phone and what needs unlocking.
-6. **Deeper interviews.** Optional transcription and summary, only when Jay asks for it.
-7. **Weave login** in place of the shared key, so the app knows it is Jay, and could later be
-   shared with others.
+7. **Deeper interviews.** Optional transcription and summary, only when Jay asks for it.
 
 ## Open questions
 
