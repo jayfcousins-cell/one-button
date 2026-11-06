@@ -244,13 +244,25 @@ $('#mail').innerHTML=`<div class="tag">${esc(D.update.date)} . from One Button, 
    - ?s=<space> for anyone else: Weave sign-in. An invitation in the address joins this browser
      in the background (the same steps as the Weave front door); each one works once, for the
      person it names. The server hands over the space only to a member, held parts removed. */
-const Q=new URLSearchParams(location.search), SLUG=Q.get('s'), INVITE=Q.get('invite');
-const WEAVE='https://canopy-website-ef7a8.web.app/api/weave-trust';
-function gate(t,x){$('#body').classList.add('hidden');$('#gate').classList.remove('hidden');$('#gate-t').textContent=t;$('#gate-x').textContent=x;}
+// The Weave front door only returns to a plain path, so the space is remembered for the way back.
+const Q=new URLSearchParams(location.search), INVITE=Q.get('invite');
+let SLUG=Q.get('s');
+try{if(SLUG)localStorage.setItem('ob.space.last',SLUG);else if(location.origin==='https://canopy-website-ef7a8.web.app')SLUG=localStorage.getItem('ob.space.last');}catch(e){}
+// The same file runs on One Button's site (Jay's own view, in the app) and on Canopy's, where the
+// shared link points: Weave sign-ins live on Canopy's address, so people who already have one
+// (Cordell, from his questionnaire) are recognised there.
+const CANOPY='https://canopy-website-ef7a8.web.app', ON_CANOPY=location.origin===CANOPY;
+const WEAVE=CANOPY+'/api/weave-trust', API=ON_CANOPY?'https://one-button-jay.web.app/api/space/':'/api/space/';
+function gate(t,x,link){$('#body').classList.add('hidden');$('#gate').classList.remove('hidden');$('#gate-t').textContent=t;$('#gate-x').textContent=x;
+  const old=$('#gate-go');if(old)old.remove();
+  if(link){const a=document.createElement('a');a.id='gate-go';a.href=link[1];a.textContent=link[0];a.style.cssText='display:inline-block;margin-top:14px;font-weight:600';$('#gate').appendChild(a);}}
+// Someone who already has a Weave sign-in on another device: the Weave front door lets them in
+// with their account code, uses this invitation, and comes back here.
+const doorLink=()=>[ 'Sign in with your account code', CANOPY+'/weave/door/?c='+encodeURIComponent(SLUG)+(INVITE?'&invite='+encodeURIComponent(INVITE):'')+'&next='+encodeURIComponent('/space/') ];
 function show(D){$('#gate').classList.add('hidden');$('#body').classList.remove('hidden');render(D);}
 function appKey(){try{if(window.OBNative&&OBNative.apiKey)return OBNative.apiKey();}catch(e){}
   try{if(window.parent!==window&&window.parent.obKey)return window.parent.obKey();}catch(e){}try{return JSON.parse(localStorage.getItem('ob-key')||'""');}catch(e){return '';}}
-const post=(route,body,headers={})=>fetch('/api/space/'+route,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)})
+const post=(route,body,headers={})=>fetch(API+route,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)})
   .then(r=>r.json().then(d=>r.ok?d:Promise.reject(new Error(d.error||r.status))));
 function stripInvite(){try{history.replaceState(null,'',location.pathname+'?s='+encodeURIComponent(SLUG));}catch(e){}}
 
@@ -271,7 +283,8 @@ function weave(){
       const mine=W.me(),name=mine&&mine.agentName?mine.agentName:String(i.forName||'').trim().toLowerCase();
       if(!name)return gate('This link needs a name','Ask Jay for a new one.');
       return (mine&&mine.agentName?W.acceptInvite(INVITE):W.redeemInvite(INVITE,name,i.forLabel||''))
-        .then(()=>W.login({name,requireCommunity:SLUG})).then(r=>r&&r.ok?open():gate('Nearly there','Your browser is set up, but the space did not open: '+((r&&r.reason)||'try reloading')+'.'));
+        .then(()=>W.login({name,requireCommunity:SLUG})).then(r=>r&&r.ok?open():gate('Nearly there','Your browser is set up, but the space did not open: '+((r&&r.reason)||'try reloading')+'.'),
+          e=>gate('You already have a Weave sign-in','The name '+name+' is already yours from another page or device. Sign in once with your account code and you will come straight back here.',doorLink()));
     }).catch(e=>gate('This link could not open the space',String((e&&e.message)||e)+'. Try reloading, or ask Jay for a new link.'));
     W.check(SLUG).then(r=>{
       if(r&&r.ok)return open();
