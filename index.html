@@ -185,6 +185,7 @@
   .iv-act input{margin-top:3px;width:18px;height:18px;flex:none}
   .iv-ask{width:100%;min-height:76px;font:inherit;font-size:16px;padding:10px;border:1px solid var(--line);background:#fff;border-radius:0;box-sizing:border-box;color:var(--ink)}
   .iv-ans{white-space:pre-wrap;font-size:14.5px;line-height:1.55;background:#fff;border:1px solid var(--line);padding:12px;margin-top:6px}
+  .iv-tr{white-space:pre-wrap;font-size:14px;line-height:1.6;max-height:50vh;overflow:auto;border-left:2px solid var(--line);padding:2px 0 2px 12px;margin:6px 0}
   .cl-strip{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);padding:11px 12px;margin:0 0 14px;cursor:pointer}
   .cl-strip .cl-text{flex:1;min-width:0;font-size:14px;line-height:1.45}
   .cl-strip .cl-ans{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:var(--ink)}
@@ -962,7 +963,9 @@ function renderIv(){
   else if(s.status!=='done') h+=`<p class="note">Waiting for a connection to turn it into a note.</p>`;
   else{
     h+=`<div class="iv-h">Summary</div><p class="iv-sum">${escapeHtml(s.summary||'(no summary)')}</p>
-      <div class="iv-row"><button class="tbtn" id="iv-sharesum">Share summary</button></div>`;
+      <div class="iv-row"><button class="tbtn" id="iv-sharesum">Share summary</button></div>
+      <div class="iv-h">Transcript</div>${s.transcript?`<div class="iv-tr">${escapeHtml(s.transcript)}</div><div class="iv-row"><button class="tbtn" id="iv-sharetr">Share transcript</button><button class="tbtn" id="iv-tr">Hide</button></div>`
+        :`<div class="iv-row"><button class="tbtn" id="iv-tr">Show transcript</button></div>`}`;
     if((s.actions||[]).length){
       h+=`<div class="iv-h">Actions</div>`;
       s.actions.forEach((a,i)=>{const added=(s.added||{})[i];
@@ -990,6 +993,16 @@ function renderIv(){
   $('#iv-share').onclick=()=>NATIVE&&NATIVE.shareInterview(name);
   const proc=$('#iv-proc'); if(proc) proc.onclick=()=>ivProcess(name,f.ts);
   const ss=$('#iv-sharesum'); if(ss) ss.onclick=()=>ivShareText(s.title+'\n\n'+s.summary+((s.points||[]).length?'\n\n'+s.points.map(p=>'- '+p).join('\n'):''));
+  const tr=$('#iv-tr'); if(tr) tr.onclick=async()=>{
+    if(s.transcript){delete IVS[id].transcript;renderIv();return;}
+    tr.disabled=true;
+    try{const r=await fetch('/api/interview/transcript',{method:'POST',headers:obHeaders(),body:JSON.stringify({id})});
+      const d=await r.json(); if(!r.ok)throw 0;
+      if(!d.transcript){showToast('Only in your vault note: recorded before transcripts were kept');tr.disabled=false;return;}
+      IVS[id]={...IVS[id],transcript:d.transcript}; renderIv();
+    }catch{tr.disabled=false;showToast('Could not load it, try again');}
+  };
+  const st=$('#iv-sharetr'); if(st) st.onclick=()=>ivShareText((s.title||'Conversation')+' (transcript)\n\n'+s.transcript);
   const aa=$('#iv-addacts'); if(aa) aa.onclick=()=>{
     const now=Date.now(); let n=0; s.added=s.added||{};
     b.querySelectorAll('[data-act]').forEach(c=>{const i=+c.dataset.act; if(!c.checked||s.added[i])return;

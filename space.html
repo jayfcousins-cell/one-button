@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#FFFFFF" />
+<title>Shared Space</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* Mycelial Minimalism, same as One Button: white paper, ink, spark accent, hairlines, square corners. */
+  :root{--paper:#FFFFFF;--surface:#F5F5F5;--ink:#1A1A1A;--muted:#555555;--line:rgba(26,26,26,.15);--spark:#E6FF00}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 "Inter",system-ui,sans-serif;
+    padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .wrap{max-width:720px;margin:0 auto;padding:0 16px 64px}
+  .bar{display:flex;justify-content:space-between;align-items:baseline;padding:20px 0 8px}
+  .mark{font:700 18px "Inter Tight",sans-serif;letter-spacing:-.01em}
+  .mark b{box-shadow:inset 0 -6px 0 var(--spark)}
+  .tag{font:500 11px "IBM Plex Mono",monospace;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+  .preview{background:var(--spark);padding:10px 12px;font-size:14px;margin:8px 0 20px}
+  h1{font:800 32px/1.1 "Inter Tight",sans-serif;letter-spacing:-.02em;margin:8px 0 6px}
+  h2{font:700 20px "Inter Tight",sans-serif;margin:40px 0 4px;letter-spacing:-.01em}
+  .lede{color:var(--muted);margin:0 0 4px}
+  .box{border:1px solid var(--line);padding:14px 16px;margin:12px 0}
+  .row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  button,.btn{font:600 14px "Inter",sans-serif;background:var(--paper);color:var(--ink);border:1px solid var(--ink);
+    padding:10px 14px;min-height:44px;cursor:pointer;border-radius:0;transition:background .15s}
+  button:hover{background:var(--surface)}
+  button.on{background:var(--ink);color:var(--paper)}
+  button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .link{background:none;border:0;padding:0;min-height:0;text-decoration:underline;color:var(--muted);font-weight:500}
+  /* map */
+  #map{width:100%;height:auto;display:block;border:1px solid var(--line);background:var(--paper)}
+  #map .edge{stroke:var(--ink);stroke-opacity:.25;stroke-width:1.2;fill:none}
+  #map .edge.hot{stroke-opacity:.9;stroke-width:2}
+  #map .proj rect{fill:var(--paper);stroke:var(--ink);stroke-width:1.2}
+  #map .proj.hot rect{fill:var(--spark)}
+  #map .conv circle{fill:var(--ink)}
+  #map .person circle{fill:var(--paper);stroke:var(--ink);stroke-width:1.2}
+  #map text{font:500 12px "Inter",sans-serif;fill:var(--ink)}
+  #map .small{font:400 10.5px "IBM Plex Mono",monospace;fill:var(--muted)}
+  #map g{cursor:pointer}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px}
+  /* lists */
+  .proj-card h3,.conv h3{font:700 17px "Inter Tight",sans-serif;margin:0 0 2px}
+  .next{border-left:3px solid var(--spark);padding:2px 0 2px 10px;margin-top:10px;font-size:15px}
+  .task{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line);font-size:15px}
+  .task input{width:20px;height:20px;margin-top:2px;accent-color:var(--ink)}
+  .task .tag{display:block;margin-top:2px}
+  .who{margin:18px 0 0}
+  .quote{font-size:15px;border-left:2px solid var(--line);padding:2px 0 2px 12px;margin:10px 0;font-style:italic}
+  .tr{white-space:pre-wrap;font-size:14px;line-height:1.65;max-height:320px;overflow:auto;background:var(--surface);padding:12px;margin-top:10px}
+  details summary{cursor:pointer;font-weight:600;padding:6px 0;list-style:none}
+  details summary::before{content:"+ ";font-family:"IBM Plex Mono",monospace}
+  details[open] summary::before{content:"- "}
+  ul.pts{margin:8px 0 0;padding-left:18px}
+  .mail{background:var(--surface);padding:16px;font-size:15px}
+  .mail .tag{margin-bottom:8px}
+  .hidden{display:none}
+  .dim{opacity:.35;transition:opacity .2s}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar"><span class="mark">One <b>Button</b></span><span class="tag">Shared space</span></div>
+  <div class="preview" id="preview">Preview with made-up content. This is what someone sees after tapping the link you shared.</div>
+
+  <span class="tag" id="since"></span>
+  <h1 id="title"></h1>
+  <p class="lede" id="lede"></p>
+
+  <div class="box" id="consent">
+    <span class="tag">Your updates</span>
+    <p style="margin:6px 0 0">When something grows from these conversations, you get one short update a day, only on days something changed.</p>
+    <div class="row" id="how">
+      <button data-how="email">By email</button>
+      <button data-how="page" class="on">Just this page</button>
+      <button data-how="pause">Pause</button>
+    </div>
+    <p class="tag" style="margin:10px 0 0" id="how-note">You can change this or leave at any time.</p>
+  </div>
+
+  <h2>How it connects</h2>
+  <p class="lede">Projects, and the conversations they came from. Tap one to light up its links.</p>
+  <svg id="map" viewBox="0 0 680 400" role="img" aria-label="Map of projects and the conversations they came from"></svg>
+  <div class="legend"><span class="tag">&#9633; project</span><span class="tag">&#9679; conversation</span><span class="tag">&#9675; person</span></div>
+
+  <h2>Projects</h2>
+  <div id="projects"></div>
+
+  <h2>Tasks and next steps</h2>
+  <div id="tasks"></div>
+
+  <h2>Conversations</h2>
+  <p class="lede">The recordings, what each was about, and the full words.</p>
+  <div id="convs"></div>
+
+  <h2>Distilled</h2>
+  <p class="lede">What came out of the conversations: key points, words worth keeping, and documents drafted from them.</p>
+  <div id="distilled"></div>
+
+  <h2>Daily update</h2>
+  <p class="lede">What arrives on a day something changed.</p>
+  <div class="mail" id="mail"></div>
+
+  <p class="tag" style="margin-top:40px">Only the people in these conversations can open this space. <button class="link" id="leave">Leave this space</button></p>
+</div>
+
+<script>
+// Sample content for the preview. The live page loads the same shape from the server,
+// only for someone signed in with Weave who is in these conversations.
+const DEMO={
+  people:[{id:'jay',name:'Jay'},{id:'maya',name:'Maya'}],
+  viewer:'maya',
+  since:'Connected since 12 Oct 2026',
+  projects:[
+    {id:'p1',name:'Seed library',status:'Starting',about:'A shelf of local seeds anyone on the street can borrow and bring back after harvest.',convs:['c1','c3'],next:'Maya asks the cafe about a shelf by the door.'},
+    {id:'p2',name:'Shared tool shed',status:'Planning',about:'One shed of good tools for the street instead of ten garages of unused ones.',convs:['c2','c3'],next:'Jay sketches a booking page; Maya counts the tools already offered.'},
+    {id:'p3',name:'Autumn planting day',status:'Idea',about:'A morning planting the food forest edge together, using seeds from the library and tools from the shed.',convs:['c3'],next:'Pick a Saturday in late November.'},
+  ],
+  links:[['p1','p3','seeds for the day'],['p2','p3','tools for the day']],
+  convs:[
+    {id:'c1',title:'Walk around the garden',date:'12 Oct 2026',mins:34,summary:'We walked the food forest edge and talked about which plants seed well here and how neighbours could swap seeds instead of buying them.',
+      points:['Most seed saved last year went to waste for lack of a place to share it','The cafe has foot traffic and a dry corner'],
+      quotes:['If the seeds stay in my shed they are just as lost as if I threw them out.'],
+      transcript:'Jay: So this whole edge was bare two years ago.\nMaya: And now it seeds itself. I had jars of calendula and beans left over and nowhere to put them.\nJay: What if they lived somewhere people already walk past?\nMaya: The cafe. They have that dry corner by the door...'},
+    {id:'c2',title:'Phone call about the tool shed',date:'2 Nov 2026',mins:18,summary:'A short call about pooling tools. Six neighbours have already offered things; the open question is how people book and return them.',
+      points:['Six neighbours have offered tools','Booking needs to be as easy as a text message'],
+      quotes:['Nobody needs a hedge trimmer for more than one afternoon a year.'],
+      transcript:'Maya: I counted, six people have said yes already.\nJay: Then the hard part is not the tools, it is the booking.\nMaya: It has to be as easy as sending a text...'},
+    {id:'c3',title:'Coffee: who else to bring in',date:'5 Nov 2026',mins:41,summary:'We joined the two ideas up: a planting day that uses the seed library and the tool shed, and invites the street to see both working.',
+      points:['A planting day shows both projects working at once','Invite the school garden group'],
+      quotes:['People join what they can see working.'],
+      transcript:'Jay: What if the first thing the shed and the library do is the same morning?\nMaya: A planting day. Seeds from the shelf, tools from the shed.\nJay: People join what they can see working...'},
+  ],
+  tasks:[
+    {who:'jay',text:'Sketch a simple booking page for the tool shed',due:'by 15 Nov',from:'c2',done:false},
+    {who:'jay',text:'Send Maya the list of seed varieties from the walk',due:'',from:'c1',done:true},
+    {who:'maya',text:'Ask the cafe about a shelf by the door',due:'this week',from:'c1',done:false},
+    {who:'maya',text:'Count the tools already offered and list them',due:'',from:'c2',done:false},
+    {who:'both',text:'Choose a Saturday for the planting day',due:'late Nov',from:'c3',done:false},
+  ],
+  docs:[
+    {title:'Seed library: first steps',from:'c1',when:'6 Nov',body:'1. A dry shelf with labelled jars at the cafe.\n2. A notebook: take a jar, write your name, bring seeds back after harvest.\n3. Start with what Maya already has: calendula, runner beans, chard.\n4. Ask the school garden group to add theirs.'},
+    {title:'Planting day invitation (draft)',from:'c3',when:'6 Nov',body:'Come and plant the food forest edge with us on a Saturday morning in late November. Seeds from the new seed library, tools from the new shared shed. Bring gloves and a friend.'},
+  ],
+  update:{date:'7 Nov',lines:['New: a draft invitation for the planting day','Jay ticked off: send Maya the list of seed varieties','New task for you and Jay: choose a Saturday for the planting day']},
+};
+
+const D=DEMO, $=s=>document.querySelector(s);
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const name=id=>id==='both'?'Both of you':id===D.viewer?'You':(D.people.find(p=>p.id===id)||{}).name||id;
+const conv=id=>D.convs.find(c=>c.id===id);
+
+$('#title').textContent=D.people.map(p=>p.id===D.viewer?'You':p.name).join(' and ');
+$('#lede').textContent=`${D.convs.length} conversations, ${D.projects.length} projects growing from them.`;
+$('#since').textContent=D.since;
+
+// Update choice (preview only: nothing is saved).
+document.querySelectorAll('#how button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#how button').forEach(x=>x.classList.toggle('on',x===b));
+  $('#how-note').textContent={email:'One email a day at most, only when something changed.',page:'Nothing is sent. What is new shows here when you visit.',pause:'Paused. Nothing is sent until you turn it back on.'}[b.dataset.how];
+});
+$('#leave').onclick=e=>{e.target.replaceWith('(In the live page this removes you from the space and stops all updates.)');};
+
+// Map: people in the middle, projects around them, conversations on the edges between.
+(function map(){
+  const svg=$('#map'), W=680, H=400, NS='http://www.w3.org/2000/svg';
+  const P={p1:[150,110],p2:[530,110],p3:[340,330]};
+  const C={c1:[110,260],c2:[570,260],c3:[340,190]};
+  const people={jay:[300,40],maya:[380,40]};
+  const el=(t,a,parent=svg)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);parent.appendChild(e);return e;};
+  const edges=[];
+  const line=(a,b,keys,label)=>{const e=el('path',{class:'edge',d:`M${a[0]},${a[1]} L${b[0]},${b[1]}`});e.dataset.k=keys.join(' ');edges.push(e);
+    if(label){const t=el('text',{x:(a[0]+b[0])/2,y:(a[1]+b[1])/2-6,'text-anchor':'middle',class:'small'});t.textContent=label;}};
+  D.projects.forEach(p=>p.convs.forEach(c=>line(C[c],P[p.id],[p.id,c])));
+  D.links.forEach(([a,b,l])=>line(P[a],P[b],[a,b],l));
+  D.convs.forEach(c=>Object.keys(people).forEach(pp=>line(C[c.id],people[pp],[c.id,pp])));
+  for(const [id,[x,y]] of Object.entries(people)){
+    const g=el('g',{class:'person'});el('circle',{cx:x,cy:y,r:14},g);
+    const t=el('text',{x,y:y+30,'text-anchor':'middle'},g);t.textContent=name(id);g.dataset.k=id;}
+  D.convs.forEach(c=>{const [x,y]=C[c.id],g=el('g',{class:'conv'});el('circle',{cx:x,cy:y,r:7},g);
+    const t=el('text',{x,y:y+22,'text-anchor':'middle',class:'small'},g);t.textContent=c.date;g.dataset.k=c.id;
+    el('title',{},g).textContent=c.title;});
+  D.projects.forEach(p=>{const [x,y]=P[p.id],w=Math.max(110,p.name.length*7.6+24),g=el('g',{class:'proj'});
+    el('rect',{x:x-w/2,y:y-17,width:w,height:34},g);
+    const t=el('text',{x,y:y+4,'text-anchor':'middle'},g);t.textContent=p.name;g.dataset.k=p.id;});
+  let hot=null;
+  svg.querySelectorAll('g').forEach(g=>g.onclick=()=>{
+    hot=hot===g.dataset.k?null:g.dataset.k;
+    edges.forEach(e=>e.classList.toggle('hot',!!hot&&e.dataset.k.split(' ').includes(hot)));
+    svg.querySelectorAll('g.proj').forEach(x=>x.classList.toggle('hot',x.dataset.k===hot));
+    if(hot&&hot[0]==='p')document.getElementById('proj-'+hot).scrollIntoView({behavior:'smooth',block:'center'});
+  });
+})();
+
+$('#projects').innerHTML=D.projects.map(p=>`<div class="box proj-card" id="proj-${p.id}">
+  <span class="tag">${esc(p.status)}</span><h3>${esc(p.name)}</h3><div>${esc(p.about)}</div>
+  <div class="next"><span class="tag">Next step</span><br>${esc(p.next)}</div>
+  <p class="tag" style="margin:10px 0 0">From: ${p.convs.map(c=>esc(conv(c).title)).join(' . ')}</p></div>`).join('');
+
+const groups=[['both','Together'],[D.viewer,'You said you would'],['jay','Jay is doing']];
+$('#tasks').innerHTML=groups.map(([who,label])=>{const ts=D.tasks.filter(t=>t.who===who); if(!ts.length)return '';
+  return `<div class="who"><span class="tag">${label}</span>${ts.map(t=>`<label class="task"><input type="checkbox" ${t.done?'checked':''} ${who==='jay'?'disabled':''}>
+    <span>${t.done?'<s>':''}${esc(t.text)}${t.done?'</s>':''}<span class="tag">${t.due?esc(t.due)+' . ':''}from ${esc(conv(t.from).title)}</span></span></label>`).join('')}</div>`;}).join('');
+
+$('#convs').innerHTML=D.convs.map(c=>`<div class="box conv">
+  <span class="tag">${esc(c.date)} . ${c.mins} min</span><h3>${esc(c.title)}</h3><div>${esc(c.summary)}</div>
+  <div class="row"><button disabled title="Plays in the live page">Play recording</button><button data-tr="${c.id}">Read transcript</button></div>
+  <div class="tr hidden" id="tr-${c.id}">${esc(c.transcript)}</div></div>`).join('');
+document.querySelectorAll('[data-tr]').forEach(b=>b.onclick=()=>{const t=$('#tr-'+b.dataset.tr);t.classList.toggle('hidden');
+  b.textContent=t.classList.contains('hidden')?'Read transcript':'Hide transcript';});
+
+$('#distilled').innerHTML=
+  D.docs.map(d=>`<details class="box"><summary>${esc(d.title)}</summary><span class="tag">Drafted ${esc(d.when)} from ${esc(conv(d.from).title)}</span><div class="tr">${esc(d.body)}</div></details>`).join('')+
+  `<details class="box" open><summary>Key points</summary><ul class="pts">${D.convs.flatMap(c=>c.points).map(p=>`<li>${esc(p)}</li>`).join('')}</ul></details>`+
+  `<details class="box"><summary>Words worth keeping</summary>${D.convs.flatMap(c=>c.quotes.map(q=>`<div class="quote">${esc(q)}<br><span class="tag">${esc(c.title)}</span></div>`)).join('')}</details>`;
+
+$('#mail').innerHTML=`<div class="tag">${esc(D.update.date)} . from One Button, on behalf of Jay</div>
+  <b>What grew from your conversations with Jay today</b><ul class="pts">${D.update.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ul>
+  <p style="margin:12px 0 0"><u>Open the space</u> &nbsp; <span class="tag"><u>Stop these updates</u></span></p>`;
+</script>
+</body>
+</html>
