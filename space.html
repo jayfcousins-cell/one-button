@@ -150,13 +150,17 @@ const DEMO={
   update:{date:'7 Nov',lines:['New: a draft invitation for the planting day','Jay ticked off: send Maya the list of seed varieties','New task for you and Jay: choose a Saturday for the planting day']},
 };
 
-const D=DEMO, $=s=>document.querySelector(s);
+// A real space (or a private preview built from Jay's notes) sets window.SPACE before this runs.
+const D=window.SPACE||DEMO, $=s=>document.querySelector(s);
+if(D.banner)$('#preview').textContent=D.banner;
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const name=id=>id==='both'?'Both of you':id===D.viewer?'You':(D.people.find(p=>p.id===id)||{}).name||id;
-const conv=id=>D.convs.find(c=>c.id===id);
+const conv=id=>D.convs.find(c=>c.id===id)||{title:'',date:''};
+const fromTag=id=>id?' . from '+esc(conv(id).title):'';
 
 $('#title').textContent=D.people.map(p=>p.id===D.viewer?'You':p.name).join(' and ');
-$('#lede').textContent=`${D.convs.length} conversations, ${D.projects.length} projects growing from them.`;
+const pl=(n,w)=>n+' '+w+(n===1?'':'s');
+$('#lede').textContent=`${pl(D.convs.length,'conversation')}, ${pl(D.projects.length,'project')} growing from ${D.convs.length===1?'it':'them'}.`;
 $('#since').textContent=D.since;
 
 // Update choice (preview only: nothing is saved).
@@ -168,16 +172,23 @@ $('#leave').onclick=e=>{e.target.replaceWith('(In the live page this removes you
 
 // Map: people in the middle, projects around them, conversations on the edges between.
 (function map(){
-  const svg=$('#map'), W=680, H=400, NS='http://www.w3.org/2000/svg';
-  const P={p1:[150,110],p2:[530,110],p3:[340,330]};
-  const C={c1:[110,260],c2:[570,260],c3:[340,190]};
-  const people={jay:[300,40],maya:[380,40]};
+  const svg=$('#map'), W=680, NS='http://www.w3.org/2000/svg';
+  // Rows: people at the top, conversations under them, projects below in rows of three.
+  const spread=(n,i)=>W*(i+1)/(n+1);
+  const people={}; D.people.forEach((p,i)=>people[p.id]=[W/2+(i-(D.people.length-1)/2)*90,40]);
+  const C={}; D.convs.forEach((c,i)=>C[c.id]=[spread(D.convs.length,i),140]);
+  const P={}, cols=Math.min(3,D.projects.length);
+  D.projects.forEach((p,i)=>{const r=Math.floor(i/cols),n=Math.min(cols,D.projects.length-r*cols);P[p.id]=[spread(n,i%cols),240+r*90];});
+  const H=240+Math.ceil(D.projects.length/cols)*90+20; svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  const maxC=Math.floor((W/(cols+1)-36)/6.6), short=t=>t.length>maxC?t.slice(0,maxC-1)+'...':t;
   const el=(t,a,parent=svg)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);parent.appendChild(e);return e;};
   const edges=[];
   const line=(a,b,keys,label)=>{const e=el('path',{class:'edge',d:`M${a[0]},${a[1]} L${b[0]},${b[1]}`});e.dataset.k=keys.join(' ');edges.push(e);
-    if(label){const t=el('text',{x:(a[0]+b[0])/2,y:(a[1]+b[1])/2-6,'text-anchor':'middle',class:'small'});t.textContent=label;}};
+    if(label)el('title',{},e).textContent=label;};
   D.projects.forEach(p=>p.convs.forEach(c=>line(C[c],P[p.id],[p.id,c])));
-  D.links.forEach(([a,b,l])=>line(P[a],P[b],[a,b],l));
+  // Project to project: a curve bowing downward, so it does not run under the boxes.
+  D.links.forEach(([a,b,l])=>{const A=P[a],B=P[b],mx=(A[0]+B[0])/2,my=Math.max(A[1],B[1])+50;
+    const e=el('path',{class:'edge',d:`M${A[0]},${A[1]+17} Q${mx},${my} ${B[0]},${B[1]+17}`,'stroke-dasharray':'4 4'});e.dataset.k=[a,b].join(' ');edges.push(e);el('title',{},e).textContent=l;});
   D.convs.forEach(c=>Object.keys(people).forEach(pp=>line(C[c.id],people[pp],[c.id,pp])));
   for(const [id,[x,y]] of Object.entries(people)){
     const g=el('g',{class:'person'});el('circle',{cx:x,cy:y,r:14},g);
@@ -185,9 +196,9 @@ $('#leave').onclick=e=>{e.target.replaceWith('(In the live page this removes you
   D.convs.forEach(c=>{const [x,y]=C[c.id],g=el('g',{class:'conv'});el('circle',{cx:x,cy:y,r:7},g);
     const t=el('text',{x,y:y+22,'text-anchor':'middle',class:'small'},g);t.textContent=c.date;g.dataset.k=c.id;
     el('title',{},g).textContent=c.title;});
-  D.projects.forEach(p=>{const [x,y]=P[p.id],w=Math.max(110,p.name.length*7.6+24),g=el('g',{class:'proj'});
+  D.projects.forEach(p=>{const [x,y]=P[p.id],w=W/(cols+1)-18,g=el('g',{class:'proj'});
     el('rect',{x:x-w/2,y:y-17,width:w,height:34},g);
-    const t=el('text',{x,y:y+4,'text-anchor':'middle'},g);t.textContent=p.name;g.dataset.k=p.id;});
+    const t=el('text',{x,y:y+4,'text-anchor':'middle'},g);t.textContent=short(p.name);g.dataset.k=p.id;el('title',{},g).textContent=p.name;});
   let hot=null;
   svg.querySelectorAll('g').forEach(g=>g.onclick=()=>{
     hot=hot===g.dataset.k?null:g.dataset.k;
@@ -205,17 +216,17 @@ $('#projects').innerHTML=D.projects.map(p=>`<div class="box proj-card" id="proj-
 const groups=[['both','Together'],[D.viewer,'You said you would'],['jay','Jay is doing']];
 $('#tasks').innerHTML=groups.map(([who,label])=>{const ts=D.tasks.filter(t=>t.who===who); if(!ts.length)return '';
   return `<div class="who"><span class="tag">${label}</span>${ts.map(t=>`<label class="task"><input type="checkbox" ${t.done?'checked':''} ${who==='jay'?'disabled':''}>
-    <span>${t.done?'<s>':''}${esc(t.text)}${t.done?'</s>':''}<span class="tag">${t.due?esc(t.due)+' . ':''}from ${esc(conv(t.from).title)}</span></span></label>`).join('')}</div>`;}).join('');
+    <span>${t.done?'<s>':''}${esc(t.text)}${t.done?'</s>':''}<span class="tag">${t.due?esc(t.due):''}${fromTag(t.from)}</span></span></label>`).join('')}</div>`;}).join('');
 
 $('#convs').innerHTML=D.convs.map(c=>`<div class="box conv">
-  <span class="tag">${esc(c.date)} . ${c.mins} min</span><h3>${esc(c.title)}</h3><div>${esc(c.summary)}</div>
-  <div class="row"><button disabled title="Plays in the live page">Play recording</button><button data-tr="${c.id}">Read transcript</button></div>
-  <div class="tr hidden" id="tr-${c.id}">${esc(c.transcript)}</div></div>`).join('');
+  <span class="tag">${esc(c.date)}${c.mins?' . '+c.mins+' min':''}</span><h3>${esc(c.title)}</h3><div>${esc(c.summary)}</div>
+  <div class="row">${c.audio?'<button disabled title="Plays in the live page">Play recording</button>':''}${c.transcript?`<button data-tr="${c.id}">Read transcript</button>`:''}</div>${c.note?`<p class="tag" style="margin:8px 0 0">${esc(c.note)}</p>`:''}
+  <div class="tr hidden" id="tr-${c.id}">${esc(c.transcript||'')}</div></div>`).join('');
 document.querySelectorAll('[data-tr]').forEach(b=>b.onclick=()=>{const t=$('#tr-'+b.dataset.tr);t.classList.toggle('hidden');
   b.textContent=t.classList.contains('hidden')?'Read transcript':'Hide transcript';});
 
 $('#distilled').innerHTML=
-  D.docs.map(d=>`<details class="box"><summary>${esc(d.title)}</summary><span class="tag">Drafted ${esc(d.when)} from ${esc(conv(d.from).title)}</span><div class="tr">${esc(d.body)}</div></details>`).join('')+
+  D.docs.map(d=>`<details class="box"><summary>${esc(d.title)}</summary><span class="tag">${esc(d.kind||'Drafted')} ${esc(d.when||'')}${fromTag(d.from)}</span>${d.note?`<p class="next">${esc(d.note)}</p>`:''}<div class="tr">${esc(d.body)}</div></details>`).join('')+
   `<details class="box" open><summary>Key points</summary><ul class="pts">${D.convs.flatMap(c=>c.points).map(p=>`<li>${esc(p)}</li>`).join('')}</ul></details>`+
   `<details class="box"><summary>Words worth keeping</summary>${D.convs.flatMap(c=>c.quotes.map(q=>`<div class="quote">${esc(q)}<br><span class="tag">${esc(c.title)}</span></div>`)).join('')}</details>`;
 
