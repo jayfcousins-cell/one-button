@@ -185,6 +185,14 @@
   .iv-act input{margin-top:3px;width:18px;height:18px;flex:none}
   .iv-ask{width:100%;min-height:76px;font:inherit;font-size:16px;padding:10px;border:1px solid var(--line);background:#fff;border-radius:0;box-sizing:border-box;color:var(--ink)}
   .iv-ans{white-space:pre-wrap;font-size:14.5px;line-height:1.55;background:#fff;border:1px solid var(--line);padding:12px;margin-top:6px}
+  .cl-strip{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);padding:11px 12px;margin:0 0 14px;cursor:pointer}
+  .cl-strip .cl-text{flex:1;min-width:0;font-size:14px;line-height:1.45}
+  .cl-strip .cl-ans{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:var(--ink)}
+  .cl-dot{width:8px;height:8px;border-radius:50%;background:var(--ink);margin-top:5px;flex:none;animation:clp 1.4s ease-in-out infinite}
+  .cl-dot.done{animation:none}
+  @keyframes clp{50%{opacity:.25}}
+  @media (prefers-reduced-motion:reduce){.cl-dot{animation:none}}
+  .cl-x{background:none;border:0;font-size:20px;line-height:1;color:var(--muted);cursor:pointer;min-width:32px;min-height:32px}
   .iv-tag{font-family:'IBM Plex Mono';font-size:10.5px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase}
   .sec-lbl{font-family:'IBM Plex Mono';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
   .lk-int-time{display:none;font-size:13px;letter-spacing:0}
@@ -237,6 +245,7 @@
 <div class="sheet" id="sheet-notes">
   <div class="sheet-bar"><h2>Notices</h2><button class="sheet-x" data-close>&times;</button></div>
   <div class="sheet-body">
+    <div id="claude-strip"></div>
     <div class="cat-row" id="cat-filter">
       <button class="chip on" data-cat="all">All</button>
       <button class="chip" data-cat="fix">Fix</button>
@@ -930,7 +939,10 @@ async function ivRefresh(){
     for(const iv of d.interviews||[]){const mine=IVS[iv.id]||{};
       if(mine.status==='working'&&iv.status!=='done'&&iv.status!=='error')continue;
       IVS[iv.id]={...mine,...iv};}
+    const was=new Set(ASKS.filter(a=>a.status==='done').map(a=>a.id));
     ASKS=d.asks||[]; LS.set('ob-ivs',IVS); LS.set('ob-asks',ASKS); ivAuto();
+    if(ASKS.some(a=>a.status==='done'&&!was.has(a.id))){showToast('Claude answered');try{navigator.vibrate&&navigator.vibrate(80);}catch{}}
+    renderClaude();
     if($('#sheet-ivs').classList.contains('open'))renderInterviews();
     if(ivOpen)renderIv();
   }catch{}
@@ -992,9 +1004,10 @@ function renderIv(){
     const text=$('#iv-asktext').value.trim(); if(!text){showToast('Say or type what you want first');return;}
     send.disabled=true;
     try{const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({id,text})});
-      if(!r.ok)throw 0; ASKS.unshift(await r.json()); LS.set('ob-asks',ASKS); showToast('Sent to Claude'); renderIv();
+      if(!r.ok)throw 0; ASKS.unshift(await r.json()); LS.set('ob-asks',ASKS); showToast('Sent to Claude'); renderIv(); renderClaude();
     }catch{send.disabled=false;showToast('Could not send, try again');}
   };
+  const seenNow=ASKS.filter(q=>q.interview===id).filter(q=>q.status==='done'&&!SEEN.includes(q.id)).map(q=>q.id); if(seenNow.length)seeAsks(seenNow);
   b.querySelectorAll('[data-shareans]').forEach(x=>x.onclick=()=>{const a=ASKS.find(q=>q.id===x.dataset.shareans); if(a) ivShareText(a.answer);});
 }
 
@@ -1018,6 +1031,26 @@ function ivAuto(){
     if(f.ts<IV_SINCE-60000)continue;
     if(!s.status||(s.status==='working'&&Date.now()-(s.since||0)>600000)) ivProcess(f.name,f.ts,true);}
 }
+// Main screen strip: what Claude is doing with your asks, and its answers until you've seen them.
+let SEEN=LS.get('ob-asks-seen',[]);
+function seeAsks(ids){SEEN=[...new Set([...SEEN,...ids])].slice(-200);LS.set('ob-asks-seen',SEEN);renderClaude();}
+function renderClaude(){
+  const box=$('#claude-strip'); if(!box)return;
+  const pend=ASKS.filter(a=>a.status!=='done'), fresh=ASKS.filter(a=>a.status==='done'&&!SEEN.includes(a.id));
+  const a=fresh[0]||pend[0]; if(!a){box.innerHTML='';return;}
+  const n=fresh.length?fresh.length:pend.length, done=a.status==='done';
+  const tag=done?`Claude answered${n>1?' . '+n+' new':''}`:`Claude is working${n>1?' on '+n:''}`;
+  const body=done?`<div class="cl-ans">${escapeHtml(a.answer||'')}</div>${a.tasks?`<div class="iv-tag">+${a.tasks} task${a.tasks>1?'s':''} on your list</div>`:''}`
+    :`<div class="cl-ans">${escapeHtml(a.text||'')}</div><div class="iv-tag">your laptop picks it up within 5 minutes when it is on</div>`;
+  box.innerHTML=`<div class="cl-strip" role="button" tabindex="0"><span class="cl-dot${done?' done':''}"></span><div class="cl-text"><div class="iv-tag">${tag}</div>${body}</div>${done?'<button class="cl-x" aria-label="Dismiss">&times;</button>':''}</div>`;
+  const strip=box.firstChild;
+  strip.onclick=e=>{if(e.target.closest('.cl-x')){seeAsks([a.id]);return;}
+    if(a.interview){openIv(a.interview+'.m4a',false);}
+    if(done)seeAsks([a.id]);};
+}
+// While Claude has work in hand, check every 30 seconds even with no card open.
+setInterval(()=>{if(!document.hidden&&ASKS.some(a=>a.status!=='done'))ivRefresh();},30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ASKS.length)ivRefresh();});
 // The phone app reports back here when the upload and note are finished.
 window.obIvDone=(name,code,text)=>{
   const id=ivId(name); let d={}; try{d=JSON.parse(text);}catch{}
@@ -1040,6 +1073,7 @@ function boot(){
   resetIdle();
   if(/[?&]lock=1/.test(location.search)) showLock();
   syncNow();
+  renderClaude();
   if(NATIVE&&NATIVE.processInterview){ivRefresh();addEventListener('online',ivRefresh);}
 }
 boot();
