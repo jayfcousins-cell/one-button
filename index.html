@@ -186,6 +186,22 @@
   .iv-ask{width:100%;min-height:76px;font:inherit;font-size:16px;padding:10px;border:1px solid var(--line);background:#fff;border-radius:0;box-sizing:border-box;color:var(--ink)}
   .iv-ans{white-space:pre-wrap;font-size:14.5px;line-height:1.55;background:#fff;border:1px solid var(--line);padding:12px;margin-top:6px}
   .iv-tr{white-space:pre-wrap;font-size:14px;line-height:1.6;max-height:50vh;overflow:auto;border-left:2px solid var(--line);padding:2px 0 2px 12px;margin:6px 0}
+  .nd-title[contenteditable]{outline:none;border-bottom:1px dashed transparent;cursor:text}
+  .nd-title[contenteditable]:focus{border-bottom-color:var(--ink)}
+  .nd-edit{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 4px}
+  .nd-edit .chip{min-height:36px}
+  .nd-when{flex:1;min-width:140px;font:15px "Inter",sans-serif;padding:8px 10px;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:0}
+  .iv-edit{outline:none;border-bottom:1px dashed var(--line);cursor:text}
+  .iv-edit:focus{border-bottom-color:var(--ink)}
+  .cele{align-items:center;text-align:center}
+  .cele-n{font:800 96px/1 "Inter Tight",sans-serif;letter-spacing:-.04em;position:relative;margin:28px auto 6px;width:180px;height:180px;display:grid;place-items:center}
+  .cele-n::before,.cele-n::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--spark);animation:celering 2.4s ease-out infinite}
+  .cele-n::after{animation-delay:1.2s}
+  @keyframes celering{0%{transform:scale(.6);opacity:1}100%{transform:scale(1.35);opacity:0}}
+  @media (prefers-reduced-motion:reduce){.cele-n::before,.cele-n::after{animation:none;opacity:.6}}
+  .cele-say{font:700 22px "Inter Tight",sans-serif;margin:6px 0 18px}
+  .cele-list{text-align:left;max-width:440px;margin:0 auto;width:100%}
+  .cele-list div{padding:9px 0;border-bottom:1px solid var(--line);font-size:15px}
   .cl-strip{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);padding:11px 12px;margin:0 0 14px;cursor:pointer}
   .cl-strip .cl-text{flex:1;min-width:0;font-size:14px;line-height:1.45}
   .cl-strip .cl-ans{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:var(--ink)}
@@ -258,11 +274,23 @@
   </div>
 </div>
 
+<div class="sheet" id="sheet-cele">
+  <div class="sheet-bar"><h2 id="cele-when">Today</h2><button class="sheet-x" data-close>&times;</button></div>
+  <div class="sheet-body cele">
+    <div class="cele-n" id="cele-n">0</div>
+    <div class="cele-say" id="cele-say"></div>
+    <div class="cele-list" id="cele-list"></div>
+    <div class="iv-row" style="justify-content:center;margin-top:20px"><button class="save" id="cele-ok">Lovely</button></div>
+  </div>
+</div>
+
 <div class="sheet" id="sheet-note">
   <div class="sheet-bar"><h2>Task</h2><button class="sheet-x" data-close>&times;</button></div>
   <div class="sheet-body">
-    <div class="nd-head"><div class="nd-title" id="nd-title"></div></div>
+    <div class="nd-head"><div class="nd-title" id="nd-title" contenteditable="true" spellcheck="true" aria-label="Task, tap to edit"></div></div>
     <span class="nd-cat" id="nd-cat"></span>
+    <div class="nd-edit" id="nd-cats"></div>
+    <div class="nd-edit"><input class="nd-when" id="nd-when" placeholder="When, e.g. Friday" aria-label="When" /></div>
     <div class="nd-tools">
       <button class="mini-orb" id="nd-rec" title="Record a subtask">&#127908;</button>
       <button class="tbtn" id="nd-auto">Break this down</button>
@@ -370,7 +398,7 @@ function save(){ LS.set('ob-notes',notes); queueSync(); }
 
 /* Sync (stage 1): the server keeps the master copy so phone and browser agree. Per task, the
  * latest change wins. Coordinates never go up: they live in WHERE, on this device only. */
-const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store'];
+const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt'];
 function syncShape(n){const o={id:String(n.id)};SYNC_FIELDS.forEach(k=>{if(n[k]!==undefined)o[k]=n[k];});return o;}
 function syncSig(n){return JSON.stringify(syncShape({...n,updated:0}));}
 let synced=LS.get('ob-synced',{}); // id -> what the server last agreed on
@@ -652,7 +680,7 @@ function renderNotes(){
       <button class="ndone" title="done">&#10003;</button>`;
     row.querySelector('.ntext').onclick=()=>openNote(n.id);
     row.querySelector('.ndot').onclick=()=>openNote(n.id);
-    row.querySelector('.ndone').onclick=(e)=>{e.stopPropagation();n.done=true;noteWhere(n.id,'done',fixNow());save();renderNotes();};
+    row.querySelector('.ndone').onclick=(e)=>{e.stopPropagation();n.done=true;n.doneAt=Date.now();noteWhere(n.id,'done',fixNow());save();renderNotes();};
     list.appendChild(row);
   }
 }
@@ -666,10 +694,42 @@ function openNote(id){
   activeId=id; const n=notes.find(x=>x.id===id); if(!n)return;
   $('#nd-title').textContent=n.text;
   $('#nd-cat').textContent=CAT[n.cat].label; $('#nd-cat').style.color=CAT[n.cat].c;
+  $('#nd-when').value=n.due||'';
+  $('#nd-cats').innerHTML=Object.keys(CAT).map(k=>`<button class="chip${k===n.cat?' on':''}" data-setcat="${k}">${CAT[k].label}</button>`).join('');
+  $('#nd-cats').querySelectorAll('[data-setcat]').forEach(b=>b.onclick=()=>{n.cat=b.dataset.setcat;save();renderNotes();openNote(id);});
   $('#nd-status').textContent='Tap the mic and speak a subtask, or break it down automatically.';
   renderSubs();
   openSheet('#sheet-note');
 }
+
+// Edit a task after it is on the list: tap the words, pick a category, say when.
+const ndTitle=$('#nd-title');
+ndTitle.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();ndTitle.blur();}};
+ndTitle.onblur=()=>{const n=notes.find(x=>x.id===activeId); if(!n)return; const t=ndTitle.textContent.trim();
+  if(!t){ndTitle.textContent=n.text;return;} if(t!==n.text){n.text=t;save();renderNotes();showToast('Saved');}};
+$('#nd-when').onchange=()=>{const n=notes.find(x=>x.id===activeId); if(!n)return; n.due=$('#nd-when').value.trim(); save(); renderNotes();};
+
+// Daily celebration: in the evening (or next time you open the app), what you finished that day.
+const dayKey=t=>{const d=new Date(t);return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();};
+function celebrate(){
+  if(document.hidden||document.querySelector('.sheet.open'))return;
+  const seen=LS.get('ob-cele',[]), now=new Date(), today=dayKey(now), yest=dayKey(Date.now()-864e5);
+  const done=notes.filter(n=>n.done&&n.doneAt&&Date.now()-n.doneAt<3*864e5);
+  const days=[...new Set(done.map(n=>dayKey(n.doneAt)))].filter(k=>!seen.includes(k)&&(k!==today||now.getHours()>=18));
+  if(!days.length)return;
+  const day=days.sort((a,b)=>Math.max(...done.filter(n=>dayKey(n.doneAt)===b).map(n=>n.doneAt))-Math.max(...done.filter(n=>dayKey(n.doneAt)===a).map(n=>n.doneAt)))[0];
+  LS.set('ob-cele',[...seen,...days].slice(-30));
+  const list=done.filter(n=>dayKey(n.doneAt)===day).sort((a,b)=>a.doneAt-b.doneAt), n=list.length;
+  $('#cele-when').textContent=day===today?'Today':day===yest?'Yesterday':new Date(list[0].doneAt).toLocaleDateString([], {weekday:'long'});
+  $('#cele-n').textContent=n;
+  $('#cele-say').textContent=n===1?'One thing done. It counts.':n<5?(n+' things done. A good day.'):n<10?(n+' things done. A big day.'):(n+' things done. What a day.');
+  $('#cele-list').innerHTML=list.slice(0,12).map(x=>`<div>${escapeHtml(x.text)}</div>`).join('')+(n>12?`<div class="iv-tag">and ${n-12} more</div>`:'');
+  openSheet('#sheet-cele');
+  try{navigator.vibrate&&navigator.vibrate([60,80,60]);}catch{}
+}
+$('#cele-ok').onclick=closeSheets;
+document.addEventListener('visibilitychange',()=>setTimeout(celebrate,800));
+setInterval(celebrate,600000);
 function renderSubs(){
   const n=notes.find(x=>x.id===activeId); const list=$('#sub-list'); if(!n)return;
   if(!n.subs.length){list.innerHTML=`<div class="empty" style="padding:24px 0">No subtasks yet.</div>`;return;}
@@ -830,7 +890,7 @@ function renderLock(){
     for(const n of group){
       const row=document.createElement('div');row.className='lk-item';
       row.innerHTML=`<div class="lk-text">${escapeHtml(n.text)}</div><button class="lk-tick" aria-label="Mark done">${ICON_TICK}</button>`;
-      row.querySelector('.lk-tick').onclick=()=>{n.done=true;noteWhere(n.id,'done',fixNow());save();row.classList.add('gone');setTimeout(renderNotes,220);};
+      row.querySelector('.lk-tick').onclick=()=>{n.done=true;n.doneAt=Date.now();noteWhere(n.id,'done',fixNow());save();row.classList.add('gone');setTimeout(renderNotes,220);};
       lkList.appendChild(row);
     }
   }
@@ -969,8 +1029,8 @@ function renderIv(){
     if((s.actions||[]).length){
       h+=`<div class="iv-h">Actions</div>`;
       s.actions.forEach((a,i)=>{const added=(s.added||{})[i];
-        h+=`<label class="iv-act"><input type="checkbox" data-act="${i}" ${added?'checked disabled':''}><span>${escapeHtml(a.text)}${a.due?` <span class="iv-tag">${escapeHtml(a.due)}</span>`:''}${added?' <span class="iv-tag">on your list</span>':''}</span></label>`;});
-      h+=`<div class="iv-row"><button class="tbtn" id="iv-addacts">Add ticked to my list</button></div>`;
+        h+=`<label class="iv-act"><input type="checkbox" data-act="${i}" ${added?'checked disabled':''}><span><span ${added?'':`class="iv-edit" contenteditable="true" data-edit="${i}"`}>${escapeHtml(a.text)}</span>${a.due?` <span class="iv-tag">${escapeHtml(a.due)}</span>`:''}${added?' <span class="iv-tag">on your list</span>':''}</span></label>`;});
+      h+=`<div class="iv-row"><button class="tbtn" id="iv-addacts">Add ticked to my list</button></div><p class="note">Tap the words to change a task before adding it. After that, edit it from your list.</p>`;
     }
     if((s.points||[]).length) h+=`<div class="iv-h">Key points</div>`+s.points.map(p=>`<div class="iv-li">${escapeHtml(p)}</div>`).join('');
     if((s.projects||[]).length){
@@ -1003,6 +1063,11 @@ function renderIv(){
     }catch{tr.disabled=false;showToast('Could not load it, try again');}
   };
   const st=$('#iv-sharetr'); if(st) st.onclick=()=>ivShareText((s.title||'Conversation')+' (transcript)\n\n'+s.transcript);
+  b.querySelectorAll('[data-edit]').forEach(x=>{
+    x.onclick=e=>e.preventDefault();
+    x.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();x.blur();}};
+    x.onblur=()=>{const t=x.textContent.trim(), i=+x.dataset.edit; if(t&&t!==s.actions[i].text){s.actions[i].text=t;IVS[id]=s;LS.set('ob-ivs',IVS);}};
+  });
   const aa=$('#iv-addacts'); if(aa) aa.onclick=()=>{
     const now=Date.now(); let n=0; s.added=s.added||{};
     b.querySelectorAll('[data-act]').forEach(c=>{const i=+c.dataset.act; if(!c.checked||s.added[i])return;
@@ -1087,6 +1152,7 @@ function boot(){
   if(/[?&]lock=1/.test(location.search)) showLock();
   syncNow();
   renderClaude();
+  setTimeout(celebrate,1500);
   if(NATIVE&&NATIVE.processInterview){ivRefresh();addEventListener('online',ivRefresh);}
 }
 boot();
