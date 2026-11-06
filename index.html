@@ -865,7 +865,7 @@ window.obInterview=(state,startedAt,info)=>{
   if(state==='on'){intStart=startedAt||Date.now();intUI(true);return;}
   intUI(false);
   lkStatus.textContent=state==='saved'?'interview saved':'could not record: '+(info||'unknown');
-  if(state==='saved'&&info) openIv(info,false);
+  if(state==='saved'&&info){ivProcess(info,Date.now(),true);openIv(info,false);}
 };
 function interviewToggle(){
   if(lkLive){showToast('Finish the task first');return;}
@@ -930,7 +930,7 @@ async function ivRefresh(){
     for(const iv of d.interviews||[]){const mine=IVS[iv.id]||{};
       if(mine.status==='working'&&iv.status!=='done'&&iv.status!=='error')continue;
       IVS[iv.id]={...mine,...iv};}
-    ASKS=d.asks||[]; LS.set('ob-ivs',IVS); LS.set('ob-asks',ASKS);
+    ASKS=d.asks||[]; LS.set('ob-ivs',IVS); LS.set('ob-asks',ASKS); ivAuto();
     if($('#sheet-ivs').classList.contains('open'))renderInterviews();
     if(ivOpen)renderIv();
   }catch{}
@@ -946,8 +946,8 @@ function renderIv(){
   let h=`<p class="iv-meta">${ivWhen(f.ts)} . ${(f.size/1048576).toFixed(1)} MB${s.people&&s.people.length?' . with '+escapeHtml(s.people.join(', ')):''}</p>
     <div class="iv-row"><button class="save" id="iv-share">Share recording with them</button></div>`;
   if(s.status==='working') h+=`<p class="note">Turning it into a note. This takes about a minute; you can close this and come back.</p>`;
-  else if(s.status!=='done') h+=`<div class="iv-row"><button class="tbtn" id="iv-proc">Process: summary, actions, vault</button></div>
-    <p class="note">${s.status==='error'?escapeHtml(s.error||'That did not work.')+' Tap to try again. ':''}Sends this recording once to be turned into text, then files it in your vault.</p>`;
+  else if(s.status==='error') h+=`<p class="note">${escapeHtml(s.error||'That did not work.')}</p><div class="iv-row"><button class="tbtn" id="iv-proc">Try again</button></div>`;
+  else if(s.status!=='done') h+=`<p class="note">Waiting for a connection to turn it into a note.</p>`;
   else{
     h+=`<div class="iv-h">Summary</div><p class="iv-sum">${escapeHtml(s.summary||'(no summary)')}</p>
       <div class="iv-row"><button class="tbtn" id="iv-sharesum">Share summary</button></div>`;
@@ -1004,10 +1004,19 @@ function ivShareText(t){
   else navigator.clipboard.writeText(t).then(()=>showToast('Copied'));
 }
 
-function ivProcess(name,ts){
-  if(!(NATIVE&&NATIVE.processInterview)){showToast('Update the app to process interviews');return;}
-  const id=ivId(name); IVS[id]={...(IVS[id]||{}),status:'working'}; LS.set('ob-ivs',IVS);
+function ivProcess(name,ts,quiet){
+  if(!(NATIVE&&NATIVE.processInterview)){if(!quiet)showToast('Update the app to process interviews');return;}
+  const id=ivId(name); IVS[id]={...(IVS[id]||{}),status:'working',since:Date.now()}; LS.set('ob-ivs',IVS);
   NATIVE.processInterview(name,String(ts||Date.now())); renderIv(); renderInterviews();
+}
+// Every recording made from now on is processed in the background: ones never sent, or stuck
+// for 10 minutes because the app was closed mid-upload. Older recordings stay on the phone only.
+const IV_SINCE=LS.get('ob-ivauto-since',0)||(LS.set('ob-ivauto-since',Date.now()),Date.now());
+function ivAuto(){
+  if(!(NATIVE&&NATIVE.processInterview)||!navigator.onLine)return;
+  for(const f of ivFiles()){const s=IVS[ivId(f.name)]||{};
+    if(f.ts<IV_SINCE-60000)continue;
+    if(!s.status||(s.status==='working'&&Date.now()-(s.since||0)>600000)) ivProcess(f.name,f.ts,true);}
 }
 // The phone app reports back here when the upload and note are finished.
 window.obIvDone=(name,code,text)=>{
@@ -1031,6 +1040,7 @@ function boot(){
   resetIdle();
   if(/[?&]lock=1/.test(location.search)) showLock();
   syncNow();
+  if(NATIVE&&NATIVE.processInterview){ivRefresh();addEventListener('online',ivRefresh);}
 }
 boot();
 </script>
