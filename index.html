@@ -263,6 +263,7 @@
   <div class="sheet-bar"><h2>Notices</h2><button class="sheet-x" data-close>&times;</button></div>
   <div class="sheet-body">
     <div id="claude-strip"></div>
+    <div id="sp-strip"></div>
     <div class="cat-row" id="cat-filter">
       <button class="chip on" data-cat="all">All</button>
       <button class="chip" data-cat="fix">Fix</button>
@@ -1025,9 +1026,13 @@ function renderIv(){
   $('#iv-title').textContent=s.title||'Interview';
   let h=`<p class="iv-meta">${ivWhen(f.ts)} . ${(f.size/1048576).toFixed(1)} MB${s.people&&s.people.length?' . with '+escapeHtml(s.people.join(', ')):''}</p>
     <div class="iv-row"><button class="save" id="iv-share">Share recording with them</button></div>`;
-  const sp=spFor(s);
-  if(sp) h+=`<div class="iv-row"><button class="tbtn" id="iv-space">Open space with ${escapeHtml(sp.name)}</button><button class="tbtn" id="iv-spsend">Send ${escapeHtml(sp.name)} the link</button></div>
-    <p class="note">This conversation joins your space with ${escapeHtml(sp.name)} once your laptop files it.</p>`;
+  // One shared space per person heard in the recording, made on the first tap if it is new.
+  if(s.status==='done'&&(s.people||[]).length){
+    h+=`<div class="iv-h">Shared spaces</div>`;
+    s.people.forEach((p,i)=>{const sp=spOf(p);
+      h+=`<div class="iv-row" style="align-items:center"><span style="flex:1">${escapeHtml(p)}<span class="iv-tag">${sp?(sp.joined?'joined':'space ready'):'new space'}</span></span>${sp?`<button class="tbtn" data-spopen="${i}">Open</button>`:''}<button class="tbtn" data-spsend="${i}">Send link</button></div>`;});
+    h+=`<p class="note">Each person gets their own private space with this conversation, its notes and transcript. The link signs them in once; after that, new conversations with them land there by themselves.</p>`;
+  }
   if(s.status==='working') h+=`<p class="note">Turning it into a note. This takes about a minute; you can close this and come back.</p>`;
   else if(s.status==='error') h+=`<p class="note">${escapeHtml(s.error||'That did not work.')}</p><div class="iv-row"><button class="tbtn" id="iv-proc">Try again</button></div>`;
   else if(s.status!=='done') h+=`<p class="note">Waiting for a connection to turn it into a note.</p>`;
@@ -1061,7 +1066,8 @@ function renderIv(){
   }
   b.innerHTML=h;
   $('#iv-share').onclick=()=>NATIVE&&NATIVE.shareInterview(name);
-  if(sp){$('#iv-space').onclick=()=>spOpen(sp);$('#iv-spsend').onclick=e=>spSend(sp,e.target);}
+  b.querySelectorAll('[data-spopen]').forEach(x=>x.onclick=()=>spOpen(spOf(s.people[+x.dataset.spopen])));
+  b.querySelectorAll('[data-spsend]').forEach(x=>x.onclick=()=>spSendPerson(s.people[+x.dataset.spsend],id,x));
   const proc=$('#iv-proc'); if(proc) proc.onclick=()=>ivProcess(name,f.ts);
   const ss=$('#iv-sharesum'); if(ss) ss.onclick=()=>ivShareText(s.title+'\n\n'+s.summary+((s.points||[]).length?'\n\n'+s.points.map(p=>'- '+p).join('\n'):''));
   const tr=$('#iv-tr'); if(tr) tr.onclick=async()=>{
@@ -1117,6 +1123,12 @@ async function spRefresh(){
   }catch{}
 }
 function renderSpaces(){
+  // Also on the main list, above the tasks, so each space is one tap away.
+  const strip=$('#sp-strip'); strip.innerHTML=SPACES.length?`<div class="iv-h" style="margin-top:0">Shared spaces</div>`:'';
+  for(const sp of SPACES){const row=document.createElement('div');row.className='iv-row';row.style.alignItems='center';
+    row.innerHTML=`<span style="flex:1">Jay and ${escapeHtml(sp.name)}<span class="iv-tag">${sp.joined?'joined':'not joined yet'}</span></span><button class="tbtn">Open</button><button class="tbtn">Send link</button>`;
+    const [o,sn]=row.querySelectorAll('button'); o.onclick=()=>spOpen(sp); sn.onclick=e=>spSend(sp,e.target);
+    strip.appendChild(row);}
   const box=$('#sp-list'); $('#sp-wrap').style.display=SPACES.length?'':'none'; box.innerHTML='';
   for(const sp of SPACES){const row=document.createElement('div');row.className='note-item';
     row.innerHTML=`<div class="ntext">Jay and ${escapeHtml(sp.name)}<div class="nmeta">${sp.convs} conversation${sp.convs===1?'':'s'} . ${sp.tasks} tasks . ${sp.joined?'joined':'not joined yet'}</div></div><button class="tbtn">Send link</button>`;
@@ -1129,12 +1141,24 @@ async function spSend(sp,btn){
   if(btn)btn.disabled=true;
   try{const r=await fetch('/api/space/invite',{method:'POST',headers:obHeaders(),body:JSON.stringify({slug:sp.slug})});
     const d=await r.json(); if(!r.ok)throw 0;
-    ivShareText(d.joined?`Something new in our shared space: ${d.link}`
-      :`Hi ${sp.name}, I've set up a private space for our conversations: the notes and transcripts, the projects growing from them, and next steps. The link works once, just for you, and signs you in: ${d.link}`);
+    spShare(sp.name,d);
   }catch{showToast('Could not make the link, try again');}
   if(btn)btn.disabled=false;
 }
-const spFor=s=>SPACES.find(sp=>(s.people||[]).some(p=>[sp.person,String(sp.name).toLowerCase()].includes(String(p).toLowerCase())));
+const spOf=p=>SPACES.find(sp=>[sp.person,String(sp.name).toLowerCase()].includes(String(p).toLowerCase()));
+// From a recording's card: makes the space if needed, adds this conversation, then shares the link.
+async function spSendPerson(name,interview,btn){
+  if(btn)btn.disabled=true;
+  try{const r=await fetch('/api/space/person',{method:'POST',headers:obHeaders(),body:JSON.stringify({name,interview})});
+    const d=await r.json(); if(!r.ok)throw 0;
+    spShare(name,d); spRefresh();
+  }catch{showToast('Could not make the link, try again');}
+  if(btn)btn.disabled=false;
+}
+function spShare(name,d){
+  ivShareText(d.joined?`Something new in our shared space: ${d.link}`
+    :`Hi ${name}, I've set up a private space for our conversations: the notes and transcripts, the projects growing from them, and next steps. The link works once, just for you, and signs you in: ${d.link}`);
+}
 
 function ivProcess(name,ts,quiet){
   if(!(NATIVE&&NATIVE.processInterview)){if(!quiet)showToast('Update the app to process interviews');return;}
@@ -1195,6 +1219,7 @@ function boot(){
   renderClaude();
   setTimeout(celebrate,1500);
   if(NATIVE&&NATIVE.processInterview){ivRefresh();addEventListener('online',ivRefresh);}
+  renderSpaces();spRefresh();
 }
 boot();
 </script>
