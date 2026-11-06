@@ -253,21 +253,25 @@ try{if(SLUG)localStorage.setItem('ob.space.last',SLUG);else if(location.origin==
 // (Cordell, from his questionnaire) are recognised there.
 const CANOPY='https://canopy-website-ef7a8.web.app', ON_CANOPY=location.origin===CANOPY;
 const WEAVE=CANOPY+'/api/weave-trust', API=ON_CANOPY?'https://one-button-jay.web.app/api/space/':'/api/space/';
-function gate(t,x,link){$('#body').classList.add('hidden');$('#gate').classList.remove('hidden');$('#gate-t').textContent=t;$('#gate-x').textContent=x;
-  const old=$('#gate-go');if(old)old.remove();
-  if(link){const a=document.createElement('a');a.id='gate-go';a.href=link[1];a.textContent=link[0];a.style.cssText='display:inline-block;margin-top:14px;font-weight:600';$('#gate').appendChild(a);}}
-// Someone who already has a Weave sign-in on another device: the Weave front door lets them in
-// with their account code, uses this invitation, and comes back here.
-const doorLink=()=>[ 'Sign in with your account code', CANOPY+'/weave/door/?c='+encodeURIComponent(SLUG)+(INVITE?'&invite='+encodeURIComponent(INVITE):'')+'&next='+encodeURIComponent('/space/') ];
+// Every screen before the space itself: a heading, a line, and optionally a small form.
+function gate(t,x,html){$('#body').classList.add('hidden');$('#gate').classList.remove('hidden');$('#gate-t').textContent=t;$('#gate-x').textContent=x;
+  let m=$('#gate-more');if(!m){m=document.createElement('div');m.id='gate-more';$('#gate').appendChild(m);}m.innerHTML=html||'';return m;}
 function show(D){$('#gate').classList.add('hidden');$('#body').classList.remove('hidden');render(D);}
 function appKey(){try{if(window.OBNative&&OBNative.apiKey)return OBNative.apiKey();}catch(e){}
   try{if(window.parent!==window&&window.parent.obKey)return window.parent.obKey();}catch(e){}try{return JSON.parse(localStorage.getItem('ob-key')||'""');}catch(e){return '';}}
 const post=(route,body,headers={})=>fetch(API+route,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)})
   .then(r=>r.json().then(d=>r.ok?d:Promise.reject(new Error(d.error||r.status))));
 function stripInvite(){try{history.replaceState(null,'',location.pathname+'?s='+encodeURIComponent(SLUG));}catch(e){}}
+const NAME=String(SLUG||'').replace(/^jay-/,'');
+const FIELD='display:block;width:100%;box-sizing:border-box;font:16px "Inter",sans-serif;padding:10px;margin:6px 0 12px;border:1px solid var(--ink);background:var(--paper);color:var(--ink)';
 
+/* Weave sign-in, on One Button's site.
+   - Jay's link carries an invitation for one named person: Join makes their sign-in in this
+     browser, admits them to the space and shows their account code once.
+   - The account code signs them in on any other phone or computer, any time after.
+   - A browser that is already signed in opens straight away. */
 function weave(){
-  gate('Opening your space','The first time takes about ten seconds while this browser is set up for you. After that it opens straight away.');
+  gate('Opening your space','One moment.');
   window.WEAVE_NET=WEAVE;
   const s=document.createElement('script');s.src=WEAVE+'/wallet.js?v=door3';
   s.onerror=()=>gate('This page could not load','The part that signs you in did not arrive. Reload the page.');
@@ -277,40 +281,66 @@ function weave(){
     // One quiet second try with a fresh sign-in before saying anything; then the real reason.
     const open=()=>read().catch(()=>{const m=W.me();return (m&&m.agentName?W.login({name:m.agentName,requireCommunity:SLUG}):Promise.resolve()).then(read);})
       .catch(e=>{const why=String((e&&e.message)||e);
-        if(/membership|no such person/.test(why))gate('Not open to this name','This browser is signed in as someone who is not in this space. Ask Jay for a link.');
+        if(/membership|no such person/.test(why))signIn('This browser is signed in as someone else','Sign in with the name and account code for this space.');
         else gate('The space did not open just now','Reload the page in a minute. If it keeps happening, tell Jay this: '+why+'.');});
-    const join=()=>W.inviteInfo(INVITE).then(i=>{
-      if(!i||!i.found)return gate('This link is not one we know','Ask Jay for a new one.');
-      if(i.communityId&&i.communityId!==SLUG)return gate('This link is for somewhere else','Ask Jay for the link to this space.');
-      if(i.spent)return gate('This link has already been used','Each link opens the space once, for one person. If that was you on another device, ask Jay for a link for this one.');
-      if(i.expired)return gate('This link has run out','Ask Jay for a fresh one.');
-      const mine=W.me(),name=mine&&mine.agentName?mine.agentName:String(i.forName||'').trim().toLowerCase();
-      if(!name)return gate('This link needs a name','Ask Jay for a new one.');
-      return (mine&&mine.agentName?W.acceptInvite(INVITE):W.redeemInvite(INVITE,name,i.forLabel||''))
-        .then(()=>W.login({name,requireCommunity:SLUG})).then(r=>r&&r.ok?open():gate('Nearly there','Your browser is set up, but the space did not open: '+((r&&r.reason)||'try reloading')+'.'),
-          e=>gate('You already have a Weave sign-in','The name '+name+' is already yours from another page or device. Sign in once with your account code and you will come straight back here.',doorLink()));
-    }).catch(e=>gate('This link could not open the space',String((e&&e.message)||e)+'. Try reloading, or ask Jay for a new link.'));
+    // Signed in, with the space's membership: open. An invitation still waiting is used first.
+    const enter=(name)=>(INVITE?W.acceptInvite(INVITE).catch(()=>null):Promise.resolve())
+      .then(()=>W.login({name,requireCommunity:SLUG}))
+      .then(r=>r&&r.ok?open():gate('Not in this space yet','You are signed in as '+name+', but this space has not been shared with that name. Ask Jay for a link.'));
+
+    function signIn(t,x){
+      const m=gate(t||'Sign in to your space',x||'Use your name and the account code you were shown when you joined.',
+        `<label style="display:block;margin-top:14px">Name<input id="si-n" style="${FIELD}" autocomplete="username" autocapitalize="none" value="${esc(NAME)}"></label>
+         <label style="display:block">Account code<input id="si-c" style="${FIELD}" autocomplete="current-password" autocapitalize="none" spellcheck="false"></label>
+         <button id="si-go">Sign in</button><p id="si-e" class="tag" style="margin:12px 0 0"></p>
+         <p class="tag" style="margin:12px 0 0">Lost your code? Ask Jay for a new one.</p>`);
+      const go=()=>{const n=$('#si-n').value.trim().toLowerCase(),c=$('#si-c').value.trim();
+        if(!n||!c){$('#si-e').textContent='Fill in both.';return;}
+        $('#si-go').disabled=true;$('#si-e').textContent='Signing in…';
+        W.useAccountCode(n,c,{device:W.describeDevice()}).then(r=>{if(!r||!r.ok)throw new Error((r&&r.reason)||'sign-in failed');return enter(n);})
+          .catch(e=>{$('#si-go').disabled=false;$('#si-e').textContent='That did not work: '+String((e&&e.message)||e)+'. Check the code, or ask Jay for a new one.';});};
+      m.querySelector('#si-go').onclick=go;m.querySelector('#si-c').onkeydown=e=>{if(e.key==='Enter')go();};
+    }
+
+    function showCode(name,code){
+      const m=gate('You are in. Keep this code.','This account code signs you in to the space on any other phone or computer. It is shown only once, so save it now: in your password manager, or a note to yourself.',
+        `<p style="font:600 22px ui-monospace,Menlo,monospace;letter-spacing:.06em;margin:16px 0 4px;word-break:break-all">${esc(code)}</p>
+         <p class="tag" style="margin:0 0 14px">Your name: ${esc(name)}</p>
+         <button id="cd-copy">Copy the code</button> <button id="cd-go">Open the space</button>`);
+      m.querySelector('#cd-copy').onclick=()=>{try{navigator.clipboard.writeText(code);m.querySelector('#cd-copy').textContent='Copied';}catch(e){}};
+      m.querySelector('#cd-go').onclick=()=>enter(name);
+    }
+
+    function join(){
+      W.inviteInfo(INVITE).then(i=>{
+        if(!i||!i.found||(i.communityId&&i.communityId!==SLUG)||i.expired)return signIn('This link has run out','If you have joined before, sign in with your account code. Otherwise ask Jay for a fresh link.');
+        if(i.spent)return signIn('You have already joined','Sign in with your name and account code.');
+        const name=String(i.forName||NAME).trim().toLowerCase(),label=i.forLabel||name;
+        // A name Weave already knows (from another Weave page) signs in with its code instead.
+        return W.resolve(name).catch(()=>null).then(r=>{
+          if(r&&r.found)return signIn('Welcome back, '+label,'You already have a Weave sign-in. Use your account code once and this space is added to it.');
+          const m=gate('Jay has opened a shared space for you','Notes, transcripts and projects from your conversations with Jay, in one place. Joining takes a few seconds and needs no password.',
+            `<button id="jn-go" style="margin-top:14px">Join as ${esc(label)}</button><p id="jn-e" class="tag" style="margin:12px 0 0"></p>`);
+          m.querySelector('#jn-go').onclick=()=>{m.querySelector('#jn-go').disabled=true;$('#jn-e').textContent='Setting up…';
+            W.redeemInvite(INVITE,name,label).then(res=>res&&res.accountCode?showCode(name,res.accountCode):enter(name))
+              .catch(e=>{const why=String((e&&e.message)||e);
+                if(/taken|exists|already/i.test(why))signIn('Welcome back, '+label,'You already have a Weave sign-in. Use your account code once and this space is added to it.');
+                else{m.querySelector('#jn-go').disabled=false;$('#jn-e').textContent='That did not work: '+why+'. Try again, or ask Jay for a new link.';}});};
+        });
+      }).catch(e=>gate('This link could not open the space',String((e&&e.message)||e)+'. Try reloading.'));
+    }
+
     W.check(SLUG).then(r=>{
-      if(r&&r.ok)return open();
+      if(r&&r.ok)return INVITE?enter(W.me().agentName):open();
       const mine=W.me();
-      if(mine&&mine.agentName)return W.login({name:mine.agentName,requireCommunity:SLUG}).then(x=>x&&x.ok?open():INVITE?join():gate('Sign in to see this space','Open the link Jay sent you.'),()=>INVITE?join():gate('Sign in to see this space','Open the link Jay sent you.'));
-      return INVITE?join():gate('Sign in to see this space','Open the link Jay sent you.');
+      if(mine&&mine.agentName)return W.login({name:mine.agentName,requireCommunity:SLUG}).then(x=>x&&x.ok?open():INVITE?join():signIn(),()=>INVITE?join():signIn());
+      return INVITE?join():signIn();
     }).catch(()=>gate('Could not reach the sign-in service','Check your connection and reload the page.'));
   };
   document.head.appendChild(s);
 }
 
-// The link carries its own key, so it opens on any browser, every time. Remembered here so the
-// plain address keeps working; a key Jay has replaced falls back to Weave sign-in.
-let LKEY=Q.get('k');
-try{if(SLUG&&LKEY)localStorage.setItem('ob.space.k.'+SLUG,LKEY);else if(SLUG)LKEY=localStorage.getItem('ob.space.k.'+SLUG);}catch(e){}
-function keyed(){gate('Opening your space','One moment.');
-  post('data',{slug:SLUG,k:LKEY}).then(show).catch(e=>{
-    if(/replaced/.test(String(e&&e.message))){try{localStorage.removeItem('ob.space.k.'+SLUG);}catch(x){}gate('This link has been replaced','Ask Jay for the new one.');}
-    else gate('The space did not open just now','Reload the page in a minute. If it keeps happening, tell Jay this: '+String((e&&e.message)||e)+'.');});}
-
 if(window.SPACE) show(window.SPACE);
-else if(SLUG&&LKEY) keyed();
 else if(!SLUG) show({...DEMO,banner:'Preview with made-up content. This is what someone sees after tapping the link you shared.'});
 else if(appKey()&&!INVITE){gate('Opening','Loading your view of this space.');post('get',{slug:SLUG},{'x-ob-key':appKey()}).then(show).catch(weave);}
 else weave();
