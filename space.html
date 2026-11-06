@@ -67,7 +67,9 @@
 <div class="wrap">
   <div class="bar"><span class="mark">One <b>Button</b></span><span class="tag">Shared space</span></div>
   <div class="preview" id="preview">Preview with made-up content. This is what someone sees after tapping the link you shared.</div>
+  <div class="box hidden" id="gate"><h2 id="gate-t" style="margin-top:0">Opening your space</h2><p id="gate-x" style="margin:0">One moment.</p></div>
 
+  <div id="body">
   <span class="tag" id="since"></span>
   <h1 id="title"></h1>
   <p class="lede" id="lede"></p>
@@ -107,6 +109,7 @@
   <div class="mail" id="mail"></div>
 
   <p class="tag" style="margin-top:40px">Only the people in these conversations can open this space. <button class="link" id="leave">Leave this space</button></p>
+  </div>
 </div>
 
 <script>
@@ -150,10 +153,10 @@ const DEMO={
   update:{date:'7 Nov',lines:['New: a draft invitation for the planting day','Jay ticked off: send Maya the list of seed varieties','New task for you and Jay: choose a Saturday for the planting day']},
 };
 
-// A real space (or a private preview built from Jay's notes) sets window.SPACE before this runs.
-const D=window.SPACE||DEMO, $=s=>document.querySelector(s);
-if(D.banner)$('#preview').textContent=D.banner;
+const $=s=>document.querySelector(s);
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function render(D){
+$('#preview').textContent=D.banner||'';$('#preview').classList.toggle('hidden',!D.banner);
 const name=id=>id==='both'?'Both of you':id===D.viewer?'You':(D.people.find(p=>p.id===id)||{}).name||id;
 const conv=id=>D.convs.find(c=>c.id===id)||{title:'',date:''};
 const fromTag=id=>id?' . from '+esc(conv(id).title):'';
@@ -209,7 +212,7 @@ $('#leave').onclick=e=>{e.target.replaceWith('(In the live page this removes you
 })();
 
 $('#projects').innerHTML=D.projects.map(p=>`<div class="box proj-card" id="proj-${p.id}">
-  <span class="tag">${esc(p.status)}</span><h3>${esc(p.name)}</h3><div>${esc(p.about)}</div>
+  <span class="tag">${esc(p.status)}${p.held?' . held, only you see this: '+esc(p.held):''}</span><h3>${esc(p.name)}</h3><div>${esc(p.about)}</div>
   <div class="next"><span class="tag">Next step</span><br>${esc(p.next)}</div>
   <p class="tag" style="margin:10px 0 0">From: ${p.convs.map(c=>esc(conv(c).title)).join(' . ')}</p></div>`).join('');
 
@@ -233,6 +236,57 @@ $('#distilled').innerHTML=
 $('#mail').innerHTML=`<div class="tag">${esc(D.update.date)} . from One Button, on behalf of Jay</div>
   <b>What grew from your conversations with Jay today</b><ul class="pts">${D.update.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ul>
   <p style="margin:12px 0 0"><u>Open the space</u> &nbsp; <span class="tag"><u>Stop these updates</u></span></p>`;
+}
+
+/* Which space, and who is looking.
+   - A preview built from Jay's notes sets window.SPACE.
+   - ?s=<space> on Jay's phone: the app key opens his own view, held parts included.
+   - ?s=<space> for anyone else: Weave sign-in. An invitation in the address joins this browser
+     in the background (the same steps as the Weave front door); each one works once, for the
+     person it names. The server hands over the space only to a member, held parts removed. */
+const Q=new URLSearchParams(location.search), SLUG=Q.get('s'), INVITE=Q.get('invite');
+const WEAVE='https://canopy-website-ef7a8.web.app/api/weave-trust';
+function gate(t,x){$('#body').classList.add('hidden');$('#gate').classList.remove('hidden');$('#gate-t').textContent=t;$('#gate-x').textContent=x;}
+function show(D){$('#gate').classList.add('hidden');$('#body').classList.remove('hidden');render(D);}
+function appKey(){try{if(window.OBNative&&OBNative.apiKey)return OBNative.apiKey();}catch(e){}
+  try{if(window.parent!==window&&window.parent.obKey)return window.parent.obKey();}catch(e){}try{return JSON.parse(localStorage.getItem('ob-key')||'""');}catch(e){return '';}}
+const post=(route,body,headers={})=>fetch('/api/space/'+route,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)})
+  .then(r=>r.json().then(d=>r.ok?d:Promise.reject(new Error(d.error||r.status))));
+function stripInvite(){try{history.replaceState(null,'',location.pathname+'?s='+encodeURIComponent(SLUG));}catch(e){}}
+
+function weave(){
+  gate('Opening your space','The first time takes about ten seconds while this browser is set up for you. After that it opens straight away.');
+  window.WEAVE_NET=WEAVE;
+  const s=document.createElement('script');s.src=WEAVE+'/wallet.js?v=door3';
+  s.onerror=()=>gate('This page could not load','The part that signs you in did not arrive. Reload the page.');
+  s.onload=()=>{
+    const W=window.WeaveWallet;
+    const open=()=>post('data',{slug:SLUG,token:W.token()}).then(d=>{stripInvite();show(d);if(INVITE){try{W.markInvite(INVITE,'opened');}catch(e){}}})
+      .catch(e=>gate('Not open to this name','This browser is signed in as someone who is not in this space. Ask Jay for a link.'));
+    const join=()=>W.inviteInfo(INVITE).then(i=>{
+      if(!i||!i.found)return gate('This link is not one we know','Ask Jay for a new one.');
+      if(i.communityId&&i.communityId!==SLUG)return gate('This link is for somewhere else','Ask Jay for the link to this space.');
+      if(i.spent)return gate('This link has already been used','Each link opens the space once, for one person. If that was you on another device, ask Jay for a link for this one.');
+      if(i.expired)return gate('This link has run out','Ask Jay for a fresh one.');
+      const mine=W.me(),name=mine&&mine.agentName?mine.agentName:String(i.forName||'').trim().toLowerCase();
+      if(!name)return gate('This link needs a name','Ask Jay for a new one.');
+      return (mine&&mine.agentName?W.acceptInvite(INVITE):W.redeemInvite(INVITE,name,i.forLabel||''))
+        .then(()=>W.login({name,requireCommunity:SLUG})).then(r=>r&&r.ok?open():gate('Nearly there','Your browser is set up, but the space did not open: '+((r&&r.reason)||'try reloading')+'.'));
+    }).catch(e=>gate('This link could not open the space',String((e&&e.message)||e)+'. Try reloading, or ask Jay for a new link.'));
+    W.check(SLUG).then(r=>{
+      if(r&&r.ok)return open();
+      const mine=W.me();
+      if(mine&&mine.agentName)return W.login({name:mine.agentName,requireCommunity:SLUG}).then(x=>x&&x.ok?open():INVITE?join():gate('Sign in to see this space','Open the link Jay sent you.'),()=>INVITE?join():gate('Sign in to see this space','Open the link Jay sent you.'));
+      return INVITE?join():gate('Sign in to see this space','Open the link Jay sent you.');
+    }).catch(()=>gate('Could not reach the sign-in service','Check your connection and reload the page.'));
+  };
+  document.head.appendChild(s);
+}
+
+if(window.SPACE) show(window.SPACE);
+else if(!SLUG) show({...DEMO,banner:'Preview with made-up content. This is what someone sees after tapping the link you shared.'});
+else if(appKey()&&!INVITE){gate('Opening','Loading your view of this space.');post('get',{slug:SLUG},{'x-ob-key':appKey()}).then(show).catch(weave);}
+else weave();
 </script>
 </body>
 </html>

@@ -329,6 +329,7 @@
 <div class="sheet" id="sheet-ivs">
   <div class="sheet-bar"><h2>Interviews</h2><button class="sheet-x" data-close>&times;</button></div>
   <div class="sheet-body">
+    <div id="sp-wrap" style="display:none"><div class="iv-h" style="margin-top:0">Shared spaces</div><div id="sp-list"></div><div class="iv-h">Recordings</div></div>
     <div id="iv-list"></div>
     <p class="note">Kept privately inside One Button until you share or process one. Processed interviews go to your vault, Interviews folder, by themselves when the laptop is on.</p>
   </div>
@@ -337,6 +338,11 @@
 <div class="sheet iv-card" id="sheet-iv">
   <div class="sheet-bar"><h2 id="iv-title">Interview</h2><button class="sheet-x" data-close>&times;</button></div>
   <div class="sheet-body" id="iv-body"></div>
+</div>
+
+<div class="sheet" id="sheet-space">
+  <div class="sheet-bar"><h2 id="sp-title">Shared space</h2><button class="sheet-x" data-close>&times;</button></div>
+  <iframe id="sp-frame" title="Shared space" style="flex:1;border:0;width:100%;background:var(--cream)"></iframe>
 </div>
 
 <div class="saver" id="saver">
@@ -827,14 +833,15 @@ function openSheet(sel){ closeSheets(); $(sel).classList.add('open');
   if(sel==='#sheet-notes')renderNotes();
   if(sel==='#sheet-settings'){$('#set-key').value='';$('#key-field').style.display=NATIVE?'none':'';
     $('#set-lockfull').checked=LS.get('ob-lockfull',true);renderContacts();$('#upd').style.display=NATIVE?'block':'none';}
-  if(sel==='#sheet-ivs'){renderInterviews();ivRefresh();}}
+  if(sel==='#sheet-ivs'){renderSpaces();renderInterviews();ivRefresh();spRefresh();}}
 function closeSheets(){document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));}
 $('#open-notes').onclick=()=>openSheet('#sheet-notes');
 $('#open-settings').onclick=()=>openSheet('#sheet-settings');
 $('#open-ivs').onclick=()=>openSheet('#sheet-ivs');
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{
   const noteOpen=$('#sheet-note').classList.contains('open');
-  const ivBack=$('#sheet-iv').classList.contains('open')&&ivFromList; ivOpen=null;
+  const ivBack=($('#sheet-iv').classList.contains('open')&&ivFromList)||$('#sheet-space').classList.contains('open'); ivOpen=null;
+  $('#sp-frame').src='about:blank';
   closeSheets(); if(noteOpen){ $('#sheet-notes').classList.add('open'); renderNotes(); }
   if(ivBack) openSheet('#sheet-ivs');
 });
@@ -1018,6 +1025,9 @@ function renderIv(){
   $('#iv-title').textContent=s.title||'Interview';
   let h=`<p class="iv-meta">${ivWhen(f.ts)} . ${(f.size/1048576).toFixed(1)} MB${s.people&&s.people.length?' . with '+escapeHtml(s.people.join(', ')):''}</p>
     <div class="iv-row"><button class="save" id="iv-share">Share recording with them</button></div>`;
+  const sp=spFor(s);
+  if(sp) h+=`<div class="iv-row"><button class="tbtn" id="iv-space">Open space with ${escapeHtml(sp.name)}</button><button class="tbtn" id="iv-spsend">Send ${escapeHtml(sp.name)} the link</button></div>
+    <p class="note">This conversation joins your space with ${escapeHtml(sp.name)} once your laptop files it.</p>`;
   if(s.status==='working') h+=`<p class="note">Turning it into a note. This takes about a minute; you can close this and come back.</p>`;
   else if(s.status==='error') h+=`<p class="note">${escapeHtml(s.error||'That did not work.')}</p><div class="iv-row"><button class="tbtn" id="iv-proc">Try again</button></div>`;
   else if(s.status!=='done') h+=`<p class="note">Waiting for a connection to turn it into a note.</p>`;
@@ -1051,6 +1061,7 @@ function renderIv(){
   }
   b.innerHTML=h;
   $('#iv-share').onclick=()=>NATIVE&&NATIVE.shareInterview(name);
+  if(sp){$('#iv-space').onclick=()=>spOpen(sp);$('#iv-spsend').onclick=e=>spSend(sp,e.target);}
   const proc=$('#iv-proc'); if(proc) proc.onclick=()=>ivProcess(name,f.ts);
   const ss=$('#iv-sharesum'); if(ss) ss.onclick=()=>ivShareText(s.title+'\n\n'+s.summary+((s.points||[]).length?'\n\n'+s.points.map(p=>'- '+p).join('\n'):''));
   const tr=$('#iv-tr'); if(tr) tr.onclick=async()=>{
@@ -1094,6 +1105,36 @@ function ivShareText(t){
   else if(navigator.share) navigator.share({text:t}).catch(()=>{});
   else navigator.clipboard.writeText(t).then(()=>showToast('Copied'));
 }
+
+/* Shared spaces: one per person, built by the laptop from the vault's "Jay x <Name>" folder,
+   so what they see always matches the vault. Jay opens his own view here (held parts shown);
+   the person gets a one-time Weave link, and after joining, the plain address is enough. */
+let SPACES=LS.get('ob-spaces',[]);
+async function spRefresh(){
+  if(!obKey())return;
+  try{const r=await fetch('/api/space/list',{method:'POST',headers:obHeaders(),body:'{}'});
+    if(!r.ok)return; SPACES=(await r.json()).spaces||[]; LS.set('ob-spaces',SPACES); renderSpaces(); if(ivOpen)renderIv();
+  }catch{}
+}
+function renderSpaces(){
+  const box=$('#sp-list'); $('#sp-wrap').style.display=SPACES.length?'':'none'; box.innerHTML='';
+  for(const sp of SPACES){const row=document.createElement('div');row.className='note-item';
+    row.innerHTML=`<div class="ntext">Jay and ${escapeHtml(sp.name)}<div class="nmeta">${sp.convs} conversation${sp.convs===1?'':'s'} . ${sp.tasks} tasks . ${sp.joined?'joined':'not joined yet'}</div></div><button class="tbtn">Send link</button>`;
+    row.querySelector('.ntext').onclick=()=>spOpen(sp);
+    row.querySelector('.tbtn').onclick=e=>spSend(sp,e.target);
+    box.appendChild(row);}
+}
+function spOpen(sp){openSheet('#sheet-space');$('#sp-title').textContent='Jay and '+sp.name;$('#sp-frame').src='/space.html?s='+encodeURIComponent(sp.slug);}
+async function spSend(sp,btn){
+  if(btn)btn.disabled=true;
+  try{const r=await fetch('/api/space/invite',{method:'POST',headers:obHeaders(),body:JSON.stringify({slug:sp.slug})});
+    const d=await r.json(); if(!r.ok)throw 0;
+    ivShareText(d.joined?`Something new in our shared space: ${d.link}`
+      :`Hi ${sp.name}, I've set up a private space for our conversations: the notes and transcripts, the projects growing from them, and next steps. The link works once, just for you, and signs you in: ${d.link}`);
+  }catch{showToast('Could not make the link, try again');}
+  if(btn)btn.disabled=false;
+}
+const spFor=s=>SPACES.find(sp=>(s.people||[]).some(p=>[sp.person,String(sp.name).toLowerCase()].includes(String(p).toLowerCase())));
 
 function ivProcess(name,ts,quiet){
   if(!(NATIVE&&NATIVE.processInterview)){if(!quiet)showToast('Update the app to process interviews');return;}

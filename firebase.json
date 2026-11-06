@@ -12,6 +12,7 @@
       { "source": "/api/transcribe", "function": "oneButton", "region": "us-central1" },
       { "source": "/api/sync", "function": "oneButton", "region": "us-central1" },
       { "source": "/api/interview/**", "function": "oneButton", "region": "us-central1" },
+      { "source": "/api/space/**", "function": "oneButton", "region": "us-central1" },
       { "source": "**", "destination": "/index.html" }
     ]
   }
