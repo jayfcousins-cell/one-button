@@ -300,7 +300,17 @@ function weave(){
   document.head.appendChild(s);
 }
 
+// The link carries its own key, so it opens on any browser, every time. Remembered here so the
+// plain address keeps working; a key Jay has replaced falls back to Weave sign-in.
+let LKEY=Q.get('k');
+try{if(SLUG&&LKEY)localStorage.setItem('ob.space.k.'+SLUG,LKEY);else if(SLUG)LKEY=localStorage.getItem('ob.space.k.'+SLUG);}catch(e){}
+function keyed(){gate('Opening your space','One moment.');
+  post('data',{slug:SLUG,k:LKEY}).then(show).catch(e=>{
+    if(/replaced/.test(String(e&&e.message))){try{localStorage.removeItem('ob.space.k.'+SLUG);}catch(x){}gate('This link has been replaced','Ask Jay for the new one.');}
+    else gate('The space did not open just now','Reload the page in a minute. If it keeps happening, tell Jay this: '+String((e&&e.message)||e)+'.');});}
+
 if(window.SPACE) show(window.SPACE);
+else if(SLUG&&LKEY) keyed();
 else if(!SLUG) show({...DEMO,banner:'Preview with made-up content. This is what someone sees after tapping the link you shared.'});
 else if(appKey()&&!INVITE){gate('Opening','Loading your view of this space.');post('get',{slug:SLUG},{'x-ob-key':appKey()}).then(show).catch(weave);}
 else weave();
