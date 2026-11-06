@@ -273,8 +273,12 @@ function weave(){
   s.onerror=()=>gate('This page could not load','The part that signs you in did not arrive. Reload the page.');
   s.onload=()=>{
     const W=window.WeaveWallet;
-    const open=()=>post('data',{slug:SLUG,token:W.token()}).then(d=>{stripInvite();show(d);if(INVITE){try{W.markInvite(INVITE,'opened');}catch(e){}}})
-      .catch(e=>gate('Not open to this name','This browser is signed in as someone who is not in this space. Ask Jay for a link.'));
+    const read=()=>post('data',{slug:SLUG,token:W.token()}).then(d=>{stripInvite();show(d);if(INVITE){try{W.markInvite(INVITE,'opened');}catch(e){}}});
+    // One quiet second try with a fresh sign-in before saying anything; then the real reason.
+    const open=()=>read().catch(()=>{const m=W.me();return (m&&m.agentName?W.login({name:m.agentName,requireCommunity:SLUG}):Promise.resolve()).then(read);})
+      .catch(e=>{const why=String((e&&e.message)||e);
+        if(/membership|no such person/.test(why))gate('Not open to this name','This browser is signed in as someone who is not in this space. Ask Jay for a link.');
+        else gate('The space did not open just now','Reload the page in a minute. If it keeps happening, tell Jay this: '+why+'.');});
     const join=()=>W.inviteInfo(INVITE).then(i=>{
       if(!i||!i.found)return gate('This link is not one we know','Ask Jay for a new one.');
       if(i.communityId&&i.communityId!==SLUG)return gate('This link is for somewhere else','Ask Jay for the link to this space.');
