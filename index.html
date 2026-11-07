@@ -401,7 +401,7 @@ const orb=$('#orb'), shell=$('#shell'), statusEl=$('#status'), heard=$('#heard')
 for(let i=0;i<7;i++){levels.appendChild(document.createElement('i'));}
 const bars=[...levels.children];
 function showToast(m){toast.textContent=m;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2800);}
-function save(){ LS.set('ob-notes',notes); queueSync(); }
+function save(){ LS.set('ob-notes',notes); queueSync(); syncAlarms(); }
 
 /* Sync (stage 1): the server keeps the master copy so phone and browser agree. Per task, the
  * latest change wins. Coordinates never go up: they live in WHERE, on this device only. */
@@ -434,7 +434,7 @@ async function syncNow(){
     next.sort((a,b)=>(b.ts||0)-(a.ts||0));
     notes=next;synced=agreed;
     LS.set('ob-notes',notes);LS.set('ob-synced',synced);
-    renderNotes();
+    renderNotes();syncAlarms();
   }catch(e){/* offline or locked: keep working locally, try again later */}
   finally{syncBusy=false;if(syncAgain){syncAgain=false;queueSync();}}
 }
@@ -683,7 +683,7 @@ function renderNotes(){
     const open=(n.subs||[]).filter(s=>!s.done).length, total=(n.subs||[]).length;
     const row=document.createElement('div');row.className='note-item';
     row.innerHTML=`<span class="ndot" style="background:${CAT[n.cat].c}"></span>
-      <div class="ntext">${escapeHtml(n.text)}<div class="nmeta">${CAT[n.cat].label} . ${age(n.ts)}${total?`<span class="subcount">${open}/${total}</span>`:''}</div></div>
+      <div class="ntext">${escapeHtml(n.text)}<div class="nmeta">${whenOf(n)?`<b>${whenOf(n)}</b> . `:''}${CAT[n.cat].label} . ${age(n.ts)}${total?`<span class="subcount">${open}/${total}</span>`:''}</div></div>
       <button class="ndone" title="done">&#10003;</button>`;
     row.querySelector('.ntext').onclick=()=>openNote(n.id);
     row.querySelector('.ndot').onclick=()=>openNote(n.id);
@@ -691,6 +691,19 @@ function renderNotes(){
     list.appendChild(row);
   }
 }
+// A task's time, if it has one: "today 13:00", "tomorrow 13:00", "Fri 9 Nov 13:00". Date-only stays as said.
+function dueAt(n){const d=n&&n.due;if(!d||!/T\d/.test(d))return 0;const t=Date.parse(d);return isNaN(t)?0:t;}
+function whenOf(n){const t=dueAt(n);if(!t)return n&&n.due?escapeHtml(n.due):'';const d=new Date(t),hm=d.toTimeString().slice(0,5),day=new Date();day.setHours(0,0,0,0);
+  const diff=Math.round((new Date(d).setHours(0,0,0,0)-day)/864e5);
+  return (diff===0?'today':diff===1?'tomorrow':diff===-1?'yesterday':d.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))+' '+hm;}
+/* Alarms: an hour before any open task with a time. The phone keeps them (and puts them back
+ * after a restart); this hands over the full set whenever the list changes. */
+const ALARM_BEFORE=60*60*1000;
+function syncAlarms(){const N=window.OBNative;if(!(N&&N.syncAlarms))return;
+  const now=Date.now(),out=[];
+  for(const n of notes){const t=dueAt(n);if(!t||n.done||n.deleted||t<=now)continue;
+    out.push({id:String(n.id),at:Math.max(t-ALARM_BEFORE,now+5000),due:t,text:n.text});}
+  try{N.syncAlarms(JSON.stringify(out));}catch(e){}}
 function age(ts){const m=Math.floor((Date.now()-ts)/60000);if(m<2)return'just now';if(m<60)return m+'m ago';const h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago';}
 function escapeHtml(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 $('#cat-filter').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;
@@ -897,7 +910,7 @@ function renderLock(){
     if(!isOpen) continue;
     for(const n of group){
       const row=document.createElement('div');row.className='lk-item';
-      row.innerHTML=`<div class="lk-text">${escapeHtml(n.text)}</div><button class="lk-tick" aria-label="Mark done">${ICON_TICK}</button>`;
+      row.innerHTML=`<div class="lk-text">${escapeHtml(n.text)}${whenOf(n)?`<div style="font-size:13px;opacity:.75;margin-top:2px">${whenOf(n)}</div>`:''}</div><button class="lk-tick" aria-label="Mark done">${ICON_TICK}</button>`;
       row.querySelector('.lk-tick').onclick=()=>{n.done=true;n.doneAt=Date.now();noteWhere(n.id,'done',fixNow());save();row.classList.add('gone');setTimeout(renderNotes,220);};
       lkList.appendChild(row);
     }
@@ -1228,7 +1241,7 @@ function boot(){
   renderClaude();
   setTimeout(celebrate,1500);
   if(NATIVE&&NATIVE.processInterview){ivRefresh();addEventListener('online',ivRefresh);}
-  renderSpaces();spRefresh();
+  renderSpaces();spRefresh();syncAlarms();
 }
 boot();
 </script>
