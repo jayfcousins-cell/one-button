@@ -292,6 +292,8 @@
     <span class="nd-cat" id="nd-cat"></span>
     <div class="nd-edit" id="nd-cats"></div>
     <div class="nd-edit"><input class="nd-when" id="nd-when" placeholder="When, e.g. Friday" aria-label="When" /></div>
+    <div class="nd-edit" id="nd-every" aria-label="Repeats"></div>
+    <div class="nd-status" id="nd-every-x" style="margin-top:0"></div>
     <div class="nd-tools">
       <button class="mini-orb" id="nd-rec" title="Record a subtask">&#127908;</button>
       <button class="tbtn" id="nd-auto">Break this down</button>
@@ -405,7 +407,7 @@ function save(){ LS.set('ob-notes',notes); queueSync(); syncAlarms(); }
 
 /* Sync (stage 1): the server keeps the master copy so phone and browser agree. Per task, the
  * latest change wins. Coordinates never go up: they live in WHERE, on this device only. */
-const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt'];
+const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt','every','everyBy','hist'];
 function syncShape(n){const o={id:String(n.id)};SYNC_FIELDS.forEach(k=>{if(n[k]!==undefined)o[k]=n[k];});return o;}
 function syncSig(n){return JSON.stringify(syncShape({...n,updated:0}));}
 let synced=LS.get('ob-synced',{}); // id -> what the server last agreed on
@@ -434,7 +436,7 @@ async function syncNow(){
     next.sort((a,b)=>(b.ts||0)-(a.ts||0));
     notes=next;synced=agreed;
     LS.set('ob-notes',notes);LS.set('ob-synced',synced);
-    renderNotes();syncAlarms();
+    revive();renderNotes();syncAlarms();
   }catch(e){/* offline or locked: keep working locally, try again later */}
   finally{syncBusy=false;if(syncAgain){syncAgain=false;queueSync();}}
 }
@@ -623,7 +625,7 @@ function handle(out,original){
     rBody.textContent=out.text||original;
     const note={id:Date.now(),text:out.text||original,cat,done:false,ts:Date.now(),subs:[],due:out.due||'',place:out.place||''};
     noteWhere(note.id,'said',pendingFix);
-    notes.unshift(note); save(); renderNotes();
+    if(!absorb(note))notes.unshift(note); save(); renderNotes();
     // Notices also plant on the shared Canopy spine (localStorage stays the app's own read model).
     if(window.CanopySpine){ CanopySpine.createNode({name:note.text,kind:'note',source_app:'one-button',
       geo:{local_to_dahab:/\bdahab\b/i.test(note.text)},lineage:{},demand:0}).catch(()=>{}); }
@@ -683,11 +685,11 @@ function renderNotes(){
     const open=(n.subs||[]).filter(s=>!s.done).length, total=(n.subs||[]).length;
     const row=document.createElement('div');row.className='note-item';
     row.innerHTML=`<span class="ndot" style="background:${CAT[n.cat].c}"></span>
-      <div class="ntext">${escapeHtml(n.text)}<div class="nmeta">${whenOf(n)?`<b>${whenOf(n)}</b> . `:''}${CAT[n.cat].label} . ${age(n.ts)}${total?`<span class="subcount">${open}/${total}</span>`:''}</div></div>
+      <div class="ntext">${escapeHtml(n.text)}<div class="nmeta">${whenOf(n)?`<b>${whenOf(n)}</b> . `:''}${n.every?(n.every===1?'daily':n.every===7?'weekly':n.every===30?'monthly':'every '+n.every+' days')+' . ':''}${CAT[n.cat].label} . ${age(n.ts)}${total?`<span class="subcount">${open}/${total}</span>`:''}</div></div>
       <button class="ndone" title="done">&#10003;</button>`;
     row.querySelector('.ntext').onclick=()=>openNote(n.id);
     row.querySelector('.ndot').onclick=()=>openNote(n.id);
-    row.querySelector('.ndone').onclick=(e)=>{e.stopPropagation();n.done=true;n.doneAt=Date.now();noteWhere(n.id,'done',fixNow());save();renderNotes();};
+    row.querySelector('.ndone').onclick=(e)=>{e.stopPropagation();tick(n);noteWhere(n.id,'done',fixNow());save();renderNotes();};
     list.appendChild(row);
   }
 }
@@ -704,6 +706,32 @@ function syncAlarms(){const N=window.OBNative;if(!(N&&N.syncAlarms))return;
   for(const n of notes){const t=dueAt(n);if(!t||n.done||n.deleted||t<=now)continue;
     out.push({id:String(n.id),at:Math.max(t-ALARM_BEFORE,now+5000),due:t,text:n.text});}
   try{N.syncAlarms(JSON.stringify(out));}catch(e){}}
+/* Repeating tasks. A ticked-off task with "every" days comes back at the start of the day it is
+ * due again (with its time of day moved along, so its alarm comes back too). Every tick is kept
+ * in hist, so a task said again and again ("buy eggs") learns its own rhythm. */
+const EVERY=[[0,'Never'],[1,'Daily'],[7,'Weekly'],[30,'Monthly']];
+const DAY=864e5, dayStart=t=>{const d=new Date(t);d.setHours(0,0,0,0);return d.getTime();};
+function tick(n){const now=Date.now();n.done=true;n.doneAt=now;n.hist=[...(n.hist||[]),now].slice(-12);}
+function revive(){let changed=false;const now=Date.now();
+  for(const n of notes){if(!n.every||!n.done||n.deleted||!n.doneAt)continue;
+    const back=dayStart(n.doneAt)+n.every*DAY;if(now<back)continue;
+    n.done=false;delete n.doneAt;
+    const t=dueAt(n);if(t){let d=t;while(d<back)d+=n.every*DAY;const o=new Date(d);n.due=new Date(d-o.getTimezoneOffset()*6e4).toISOString().slice(0,19);}
+    changed=true;}
+  if(changed){save();renderNotes();}}
+// The same task, said in different words: lowercased, no punctuation, no "buy/get/some/the".
+const taskKey=t=>String(t||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(w=>w&&!['buy','get','some','more','the','a','an','to','pick','up'].includes(w)).sort().join(' ');
+/* A new capture that matches an earlier task joins it instead of making a duplicate. Three or
+ * more ticks set the rhythm by itself (the typical gap between them), unless you chose one. */
+function absorb(x){const k=taskKey(x.text);if(!k)return false;
+  const old=notes.find(n=>!n.deleted&&taskKey(n.text)===k);if(!old)return false;
+  if(old.done){old.done=false;delete old.doneAt;}
+  if(x.due)old.due=x.due;
+  const h=old.hist||[];
+  if(h.length>=2&&old.everyBy!=='you'){const gaps=h.slice(1).map((t,i)=>(t-h[i])/DAY).concat((Date.now()-h[h.length-1])/DAY).sort((a,b)=>a-b);
+    const every=Math.max(1,Math.round(gaps[Math.floor(gaps.length/2)]));
+    if(old.every!==every){old.every=every;old.everyBy='learned';showToast(`${old.text}: looks like every ${every} day${every>1?'s':''}, set to repeat`);}}
+  old.ts=Date.now();return true;}
 function age(ts){const m=Math.floor((Date.now()-ts)/60000);if(m<2)return'just now';if(m<60)return m+'m ago';const h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago';}
 function escapeHtml(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 $('#cat-filter').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;
@@ -717,6 +745,11 @@ function openNote(id){
   $('#nd-when').value=n.due||'';
   $('#nd-cats').innerHTML=Object.keys(CAT).map(k=>`<button class="chip${k===n.cat?' on':''}" data-setcat="${k}">${CAT[k].label}</button>`).join('');
   $('#nd-cats').querySelectorAll('[data-setcat]').forEach(b=>b.onclick=()=>{n.cat=b.dataset.setcat;save();renderNotes();openNote(id);});
+  $('#nd-every').innerHTML='<span class="nmeta" style="margin-right:6px">Repeats</span>'+EVERY.map(([d,l])=>`<button class="chip${(n.every||0)===d?' on':''}" data-every="${d}">${l}</button>`).join('')
+    +(n.every&&!EVERY.some(([d])=>d===n.every)?`<button class="chip on">every ${n.every} days</button>`:'');
+  $('#nd-every').querySelectorAll('[data-every]').forEach(b=>b.onclick=()=>{n.every=Number(b.dataset.every);n.everyBy='you';save();renderNotes();openNote(id);});
+  const h=(n.hist||[]).length;
+  $('#nd-every-x').textContent=n.every?(n.everyBy==='learned'?`Learned from ${h} times you've done this. `:'')+`Comes back ${n.every===1?'the next day':'after '+n.every+' days'} once ticked off.`:(h>1?`Done ${h} times so far.`:'');
   $('#nd-status').textContent='Tap the mic and speak a subtask, or break it down automatically.';
   renderSubs();
   openSheet('#sheet-note');
@@ -836,7 +869,7 @@ $('#c-import').onclick=async()=>{
 function addToShopping(text){
   const item=(text||'').replace(/^(buy|get|grab|pick up|purchase)\s+/i,'').trim() || text;
   if(notes.some(n=>!n.done&&n.cat==='buy'&&n.text.toLowerCase()===item.toLowerCase())){ showToast('Already on your list'); return; }
-  notes.unshift({id:Date.now(),text:item,cat:'buy',done:false,ts:Date.now(),subs:[],store:''});
+  {const t={id:Date.now(),text:item,cat:'buy',done:false,ts:Date.now(),subs:[],store:''};if(!absorb(t))notes.unshift(t);}
   save(); renderNotes(); showToast('Added to shopping list');
 }
 
@@ -911,18 +944,18 @@ function renderLock(){
     for(const n of group){
       const row=document.createElement('div');row.className='lk-item';
       row.innerHTML=`<div class="lk-text">${escapeHtml(n.text)}${whenOf(n)?`<div style="font-size:13px;opacity:.75;margin-top:2px">${whenOf(n)}</div>`:''}</div><button class="lk-tick" aria-label="Mark done">${ICON_TICK}</button>`;
-      row.querySelector('.lk-tick').onclick=()=>{n.done=true;n.doneAt=Date.now();noteWhere(n.id,'done',fixNow());save();row.classList.add('gone');setTimeout(renderNotes,220);};
+      row.querySelector('.lk-tick').onclick=()=>{tick(n);noteWhere(n.id,'done',fixNow());save();row.classList.add('gone');setTimeout(renderNotes,220);};
       lkList.appendChild(row);
     }
   }
 }
 function showLock(){stopSaver();closeSheets();lock.classList.add('on');lockClock();
   if(!intOn) lock.classList.remove('int-armed'); // the recorder hides again each time
-  clearInterval(lkClockT);lkClockT=setInterval(lockClock,15000);renderLock();}
+  clearInterval(lkClockT);lkClockT=setInterval(lockClock,15000);revive();renderLock();}
 function hideLock(){lock.classList.remove('on');clearInterval(lkClockT);}
 
 let lkRec=null, lkLive=false;
-const TASKS_SYS=`The user speaks to a to-do app from their phone's lock screen. Pull out every task they mention. Return ONLY a raw JSON array, no markdown: [{"text":"short clean task","category":"fix"|"check"|"buy"|"do","due":"ISO 8601 date-time if they gave a time or day, else empty","place":"a place they named (home, the market), else empty"}]. One item per separate task. Keep their meaning and any time, place or person they name. Today is ${new Date().toString()}. If there is no task, return [].`;
+const TASKS_SYS=`The user speaks to a to-do app from their phone's lock screen. Pull out every task they mention. Return ONLY a raw JSON array, no markdown: [{"text":"short clean task","category":"fix"|"check"|"buy"|"do","due":"ISO 8601 date-time if they gave a time or day, else empty","place":"a place they named (home, the market), else empty","every":"days between repeats if they say it repeats (every day 1, every week 7, every month 30) or it is plainly a routine chore, else 0"}]. One item per separate task. Keep their meaning and any time, place or person they name. Today is ${new Date().toString()}. If there is no task, return [].`;
 function lockRecord(){
   if(lkLive){try{lkRec.stop()}catch{};return;}
   if(intOn){showToast('Stop the interview first');return;}
@@ -939,7 +972,7 @@ function lockRecord(){
       if(!Array.isArray(arr)) arr=[{text:t,category:'do'}]; // brain unreachable: keep the words as one task
       arr=arr.filter(x=>x&&x.text);
       const now=Date.now();
-      arr.slice().reverse().forEach((x,i)=>{notes.unshift({id:now+i,text:x.text,cat:CAT[x.category]?x.category:'do',done:false,ts:now,subs:[],due:x.due||'',place:x.place||''});noteWhere(now+i,'said',pendingFix);});
+      arr.slice().reverse().forEach((x,i)=>{const t={id:now+i,text:x.text,cat:CAT[x.category]?x.category:'do',done:false,ts:now,subs:[],due:x.due||'',place:x.place||''};const ev=Number(x.every)||0;if(ev){t.every=ev;t.everyBy='guess';}if(absorb(t))return;notes.unshift(t);noteWhere(now+i,'said',pendingFix);});
       save();renderNotes();lock.classList.remove('busy');
       lkStatus.textContent=arr.length?'added '+arr.length+(arr.length>1?' tasks':' task'):'no task heard, tap to try again';
     }
@@ -1241,7 +1274,7 @@ function boot(){
   renderClaude();
   setTimeout(celebrate,1500);
   if(NATIVE&&NATIVE.processInterview){ivRefresh();addEventListener('online',ivRefresh);}
-  renderSpaces();spRefresh();syncAlarms();
+  renderSpaces();spRefresh();revive();syncAlarms();
 }
 boot();
 </script>
