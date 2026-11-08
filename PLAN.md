@@ -65,7 +65,8 @@ Buy by itself with only that shop's items.
    - **Your voice, learned daily.** Any recording with only one voice is the owner and quietly sharpens their voiceprint. Matching runs on the person's own phone, so voiceprints never leave their device.
    - **Others tagged once.** A new voice in a recording prompts "who's this?" once. Their voice is only kept once they agree, which can be one tap when they join a shared space.
    - **Reflection prompts over time.** Occasional questions about what they care about and want to grow. With consent, answers could gather across people and later feed a Systems Ikigai reading (needs, desires, values, access) and matching between people.
-   - Open: which questions to ask, how consent to pool answers works, and whether pooled answers stay with each person or a commons.
+   - **Who holds pooled answers (Jay, 8 Nov 2026):** they stay between the people who shared them. Together those people decide what, if anything, goes on to the Commons.
+   - Open: which questions to ask, and how a group agrees what to pass to the Commons.
 
 ## Open questions
 
