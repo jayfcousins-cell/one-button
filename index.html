@@ -73,6 +73,11 @@
   .hint{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:#777;text-align:center;letter-spacing:.4px;max-width:340px}
   .lk-nav{display:flex;gap:8px;align-self:flex-start}
   .lk-nav .lk-int{min-height:44px;padding:0 14px}
+  .td-item{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--cream-2)}
+  .td-time{font:600 15px "IBM Plex Mono",monospace;min-width:64px}
+  .td-main{flex:1;min-width:0}
+  .td-name{font-weight:600}
+  .td-rel{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .projmain{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:100%;max-width:420px}
   .projmain:empty{display:none}
   .pm-card{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:44px;padding:8px 12px;border:1px solid var(--terra);border-radius:4px;background:var(--cream);color:var(--terra);font:600 14px "Inter",sans-serif;cursor:pointer;text-align:left;max-width:100%}
@@ -240,6 +245,7 @@
   <div class="bar">
     <div class="mark">One <b>Button</b></div>
     <div class="ico-row">
+      <button class="ico-btn" id="open-today" title="Today" aria-label="Today"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>
       <button class="ico-btn" id="open-proj" title="Projects" aria-label="Projects"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
       <button class="ico-btn" id="open-notes" title="Notices">&#9636;</button>
       <button class="ico-btn" id="open-saver" title="Screensaver">&#9673;</button>
@@ -363,6 +369,10 @@
   <div class="sheet-body" id="iv-body"></div>
 </div>
 
+<div class="sheet" id="sheet-today">
+  <div class="sheet-bar"><h2 id="td-title">Today</h2><button class="sheet-x" data-close>&times;</button></div>
+  <div class="sheet-body" id="td-body"></div>
+</div>
 <div class="sheet" id="sheet-proj">
   <div class="sheet-bar"><h2>Projects</h2><button class="sheet-x" data-close>&times;</button></div>
   <div class="sheet-body" id="proj-list"></div>
@@ -385,7 +395,7 @@
 <div class="lock" id="lock" role="dialog" aria-label="Lock screen tasks">
   <div class="lk-top">
     <div><div class="lk-time" id="lk-time"></div><div class="lk-date" id="lk-date"></div></div>
-    <div class="lk-nav"><button class="lk-int" id="lk-app">Open app</button><button class="lk-int" id="lk-set">Settings</button></div>
+    <div class="lk-nav"><button class="lk-int" id="lk-app">Open app</button><button class="lk-int" id="lk-set">Settings</button><button class="lk-int" id="lk-today">Today</button></div>
   </div>
   <div id="alarms-lock" class="alarms"></div>
   <div class="lk-head"><span>To do</span><span id="lk-count"></span></div>
@@ -794,6 +804,7 @@ function syncAlarms(){renderAlarms();const N=window.OBNative;if(!(N&&N.syncAlarm
   const now=Date.now(),out=[];
   for(const n of notes){if(n.done||n.deleted)continue;const t=dueAt(n);
     for(const a of alarmTimes(n))if(a.at>now)out.push({id:n.id+'|'+a.key,at:a.at,due:t,text:n.text});}
+  out.push(...eventAlarms(now));
   try{N.syncAlarms(JSON.stringify(out));}catch(e){}}
 // What is ringing now: the latest reminder that has gone off and not yet been snoozed or done.
 function ringingAt(n,now){const t=dueAt(n);if(!t||now>t+AL_GRACE)return 0;
@@ -826,7 +837,7 @@ function nativeDone(){const N=window.OBNative;if(!(N&&N.takeAlarmActions))return
   let hit=false;for(const a of acts){const n=notes.find(x=>String(x.id)===String(a.id).split('|')[0]);if(!n||n.done)continue;hit=true;
     if(a.act==='done')tick(n);else{n.alarmSeen=a.at;n.snooze=a.at+a.m*6e4;}}
   if(hit){save();renderNotes();}}
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){nativeDone();renderAlarms();}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){nativeDone();loadEvents();syncAlarms();maybeBrief();}});
 /* Projects. The Projects screen sorts everything: the projects Jay stewards, proposals found in
  * recorded conversations, and things he asked Claude to look into. Ticked ones sit on the main
  * screen beside the button. A task belongs to a project when it is linked on the task, or when it
@@ -898,6 +909,51 @@ function renderTaskProject(n){const box=$('#nd-proj');if(!box)return;const live=
   if(!live.length){box.innerHTML='';return;}
   box.innerHTML='<span class="nmeta" style="margin-right:6px">Project</span>'+live.map((p,i)=>`<button class="chip${n.project===p.id?' on':''}" data-tp="${i}">${escapeHtml(p.name)}</button>`).join('');
   box.querySelectorAll('[data-tp]').forEach(b=>b.onclick=()=>{const p=live[+b.dataset.tp];n.project=n.project===p.id?'':p.id;save();renderProjMain();renderTaskProject(n);});}
+/* Today: the morning briefing. The first time the phone is used after 8am it opens on the day's
+ * events (from the phone's own calendars) and timed tasks, in order, each with what relates to it:
+ * tasks, projects and recorded conversations that share a name or a key word with it. Events get
+ * the same reminders as tasks (1 hour, 30 and 10 minutes before), set on the phone. */
+const BRIEF_HOUR=8;
+let EVENTS=LS.get('ob-events',[]);
+function loadEvents(){const N=window.OBNative;if(!(N&&N.todayEvents))return;
+  try{const d=JSON.parse(N.todayEvents()||'null');if(Array.isArray(d)){EVENTS=d;LS.set('ob-events',EVENTS);}}catch(e){}}
+const STOP=new Set('with about meet meeting call from into that this have will what when where your their there them then than for and the call chat catch sync'.split(' '));
+const wordsOf=s=>new Set(String(s||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(w=>w.length>=4&&!STOP.has(w)));
+function relatedTo(title,skipId){const w=wordsOf(title);if(!w.size)return {tasks:[],projects:[],convs:[]};
+  const hit=s=>[...wordsOf(s)].some(x=>w.has(x));
+  return {
+    tasks:notes.filter(n=>!n.done&&!n.deleted&&n.id!==skipId&&hit(n.text)).slice(0,5),
+    projects:PROJ.projects.filter(p=>projLive(p)&&(hit(p.name)||hit(p.about))).slice(0,3),
+    convs:Object.values(IVS).filter(s=>s.status==='done'&&((s.people||[]).some(p=>w.has(p.toLowerCase()))||hit(s.title))).sort((a,b)=>(b.created||0)-(a.created||0)).slice(0,3)};}
+function todayItems(){const today=dayKey(Date.now()),out=[];
+  for(const e of EVENTS)if(dayKey(e.begin)===today)out.push({kind:'event',t:e.allDay?0:e.begin,title:e.title,where:e.where,allDay:e.allDay,e});
+  for(const n of notes){const t=dueAt(n);if(t&&!n.done&&!n.deleted&&dayKey(t)===today)out.push({kind:'task',t,title:n.text,n});}
+  return out.sort((a,b)=>a.t-b.t);}
+function renderToday(){const items=todayItems(),hm=t=>new Date(t).toTimeString().slice(0,5),open=new Set();
+  const d=new Date();$('#td-title').textContent=d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});
+  const box=$('#td-body');
+  box.innerHTML=(items.length?'':'<p class="note">Nothing in the calendar or on the list with a time today.</p>')+items.map((it,i)=>{
+    const r=relatedTo(it.title,it.n&&it.n.id),more=r.tasks.length+r.projects.length+r.convs.length;
+    return `<div class="td-item"><div class="td-time">${it.allDay?'All day':hm(it.t)}</div><div class="td-main">
+      <div class="td-name">${escapeHtml(it.title)}${it.kind==='task'?' <span class="iv-tag">task</span>':''}</div>
+      ${it.where?`<div class="nmeta">${escapeHtml(it.where)}</div>`:''}
+      ${more?`<div class="td-rel">${r.projects.map((p,j)=>`<button class="chip" data-tdp="${i}:${j}">${escapeHtml(p.name)}</button>`).join('')}
+        ${r.tasks.map((n,j)=>`<button class="chip" data-tdt="${i}:${j}">${escapeHtml(n.text)}</button>`).join('')}
+        ${r.convs.map((s,j)=>`<button class="chip" data-tdc="${i}:${j}">${escapeHtml(s.title||'Conversation')}</button>`).join('')}</div>`:''}
+    </div></div>`;}).join('')+(window.OBNative&&!(window.OBNative.todayEvents)?'<p class="note">Update the One Button app to see your calendar here.</p>':'');
+  const R=k=>{const [i,j]=k.split(':').map(Number);return [relatedTo(items[i].title,items[i].n&&items[i].n.id),j];};
+  box.querySelectorAll('[data-tdp]').forEach(b=>b.onclick=()=>{const [r,j]=R(b.dataset.tdp);openProject(r.projects[j]);});
+  box.querySelectorAll('[data-tdt]').forEach(b=>b.onclick=()=>{const [r,j]=R(b.dataset.tdt);openNote(r.tasks[j].id);});
+  box.querySelectorAll('[data-tdc]').forEach(b=>b.onclick=()=>{const [r,j]=R(b.dataset.tdc);openIv(r.convs[j].id+'.m4a',false);});}
+function openToday(){loadEvents();if(lock.classList.contains('on'))hideLock();openSheet('#sheet-today');renderToday();}
+// First use after 8am: the briefing, once a day.
+function maybeBrief(){if(!window.OBNative)return;const now=new Date();if(now.getHours()<BRIEF_HOUR)return;const k=dayKey(now);
+  if(LS.get('ob-brief-day','')===k)return;LS.set('ob-brief-day',k);openToday();}
+// Event reminders ride along with the task alarms.
+function eventAlarms(now){const out=[];
+  for(const e of EVENTS){if(e.allDay||e.begin<=now)continue;
+    for(const m of LADDER){const at=e.begin-m*6e4;if(at>now)out.push({id:'ev:'+e.id+'|'+m,at,due:e.begin,text:e.title});}}
+  return out;}
 /* Repeating tasks. A ticked-off task with "every" days comes back at the start of the day it is
  * due again (with its time of day moved along, so its alarm comes back too). Every tick is kept
  * in hist, so a task said again and again ("buy eggs") learns its own rhythm. */
@@ -1481,6 +1537,8 @@ lkInt.onclick=interviewToggle;
 // On the phone, the app asks for fingerprint or PIN and hides this view once unlocked.
 // Straight into the full app (projects, lists, settings) from the lock screen.
 $('#lk-app').onclick=()=>{hideLock();};
+$('#lk-today').onclick=()=>openToday();
+$('#open-today').onclick=()=>openToday();
 $('#lk-set').onclick=()=>{hideLock();openSheet('#sheet-settings');};
 $('#lk-phone').onclick=()=>{if(NATIVE)NATIVE.closeLock();else hideLock();};
 $('#open-lock').onclick=showLock;
@@ -1498,7 +1556,7 @@ function boot(){
   renderClaude();
   setTimeout(celebrate,1500);
   if(NATIVE&&NATIVE.processInterview){ivRefresh();addEventListener('online',ivRefresh);}
-  renderSpaces();spRefresh();revive();syncAlarms();renderProjMain();projRefresh();
+  loadEvents();renderSpaces();spRefresh();revive();syncAlarms();renderProjMain();projRefresh();maybeBrief();
 }
 boot();
 </script>
