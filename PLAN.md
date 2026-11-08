@@ -60,6 +60,13 @@ Buy by itself with only that shop's items.
    - **D. Ask Claude.** On any interview, speak a request ("turn this into a project plan", "draft a follow-up for Sam"). The laptop helper runs Claude with the transcript and the vault, saves the result beside the note, adds any tasks to the list, and the phone shows the result. Guard rails: interview words come from other people, so the helper may only read the vault, write into that interview's folder and add tasks; it cannot send messages, delete, or run commands. Sending always stays with Jay's Share buttons. For live back-and-forth, the Claude app's Remote Control already reaches a laptop session.
    - Limits: the laptop must be awake for C and D (requests wait until it is). Tell people when recording.
 
+8. **Opening One Button to other people (proposal, not built; shaped with Jay 8 Nov 2026).**
+   - **Introduce yourself by answering a question.** First launch asks one reflective question to answer aloud for a minute or two, such as what you value, what you care about, or what you want to grow in the world. The answer gives the app the person's name, their first voiceprint and a first picture of what matters to them, all in one go.
+   - **Your voice, learned daily.** Any recording with only one voice is the owner and quietly sharpens their voiceprint. Matching runs on the person's own phone, so voiceprints never leave their device.
+   - **Others tagged once.** A new voice in a recording prompts "who's this?" once. Their voice is only kept once they agree, which can be one tap when they join a shared space.
+   - **Reflection prompts over time.** Occasional questions about what they care about and want to grow. With consent, answers could gather across people and later feed a Systems Ikigai reading (needs, desires, values, access) and matching between people.
+   - Open: which questions to ask, how consent to pool answers works, and whether pooled answers stay with each person or a commons.
+
 ## Open questions
 
 - Arrival alert: buzz every arrival, or once a day per place?
