@@ -78,6 +78,7 @@
   .td-main{flex:1;min-width:0}
   .td-name{font-weight:600}
   .td-rel{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .set-h{display:block;font-family:"IBM Plex Mono";font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
   .projmain{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:100%;max-width:420px}
   .projmain:empty{display:none}
   .pm-card{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:44px;padding:8px 12px;border:1px solid var(--terra);border-radius:4px;background:var(--cream);color:var(--terra);font:600 14px "Inter",sans-serif;cursor:pointer;text-align:left;max-width:100%}
@@ -158,7 +159,7 @@
   .lock{position:fixed;inset:0;z-index:25;background:#1A1A1A;color:#FFFFFF;display:none;flex-direction:column;
     padding:calc(18px + env(safe-area-inset-top)) 20px calc(18px + env(safe-area-inset-bottom))}
   .lock.on{display:flex}
-  .lk-top{display:flex;justify-content:space-between;align-items:flex-start}
+  .lk-top{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:flex-start}
   .lk-time{font-family:"Inter Tight",sans-serif;font-weight:800;font-size:56px;line-height:1;letter-spacing:-.02em}
   .lk-date{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#B8B8B8;margin-top:8px}
   .lk-close{width:44px;height:44px;border:1px solid rgba(255,255,255,.25);background:transparent;color:#FFFFFF;display:grid;place-items:center;cursor:pointer}
@@ -315,6 +316,7 @@
     <span class="nd-cat" id="nd-cat"></span>
     <div class="nd-edit" id="nd-cats"></div>
     <div class="nd-edit"><input class="nd-when" id="nd-when" placeholder="When, e.g. Friday" aria-label="When" /></div>
+    <div class="nd-edit" id="nd-place"></div>
     <div class="nd-edit" id="nd-proj"></div>
     <div class="nd-edit" id="nd-alarm"></div>
     <div class="nd-edit" id="nd-every" aria-label="Repeats"></div>
@@ -340,7 +342,22 @@
     <button class="save" id="set-save">Save</button>
     <p class="note">Off: the lock screen shows only how many tasks are open.</p>
     <div style="height:26px"></div>
-    <label style="font-family:'IBM Plex Mono';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">Contacts &amp; channels</label>
+    <label class="set-h">My places</label>
+    <div id="places-list"></div>
+    <div class="addrow"><input id="pl-name" class="full" placeholder="A place, e.g. Home, the kids' house" />
+      <select id="pl-kind" aria-label="Kind of place" style="min-height:44px"></select>
+      <button id="pl-add-here">Add, I am here</button><button id="pl-add" class="tbtn">Add</button></div>
+    <p class="note">Locations stay on this phone. When you are at a place, its tasks come first on the lock screen.</p>
+    <div style="height:26px"></div>
+    <label class="set-h">My daily rhythm</label>
+    <div id="rhythm-list"></div>
+    <div id="rhythm-ideas" style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0"></div>
+    <div class="addrow"><input id="rh-text" class="full" placeholder="Something to do for yourself" />
+      <select id="rh-every" aria-label="How often" style="min-height:44px"><option value="1">Daily</option><option value="2">Every 2 days</option><option value="7">Weekly</option><option value="30">Monthly</option></select>
+      <button id="rh-add">Add</button></div>
+    <p class="note">These come back by themselves and sit first on the lock screen and in Today. Tap one to set its place, time or reminders.</p>
+    <div style="height:26px"></div>
+    <label class="set-h">Contacts &amp; channels</label>
     <div id="contacts-list"></div>
     <button class="tbtn" id="c-import" style="width:100%;margin-top:8px">Import from phone</button>
     <div class="addrow">
@@ -448,7 +465,7 @@ function save(){ LS.set('ob-notes',notes); queueSync(); syncAlarms(); }
 
 /* Sync (stage 1): the server keeps the master copy so phone and browser agree. Per task, the
  * latest change wins. Coordinates never go up: they live in WHERE, on this device only. */
-const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt','every','everyBy','hist','aisle','noAlarm','alarmSeen','remind','snooze','project','from'];
+const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt','every','everyBy','hist','aisle','noAlarm','alarmSeen','remind','snooze','project','from','routine'];
 function syncShape(n){const o={id:String(n.id)};SYNC_FIELDS.forEach(k=>{if(n[k]!==undefined)o[k]=n[k];});return o;}
 function syncSig(n){return JSON.stringify(syncShape({...n,updated:0}));}
 let synced=LS.get('ob-synced',{}); // id -> what the server last agreed on
@@ -731,7 +748,7 @@ function renderNotes(){
     const open=(n.subs||[]).filter(s=>!s.done).length, total=(n.subs||[]).length;
     const row=document.createElement('div');row.className='note-item';
     row.innerHTML=`<span class="ndot" style="background:${CAT[n.cat].c}"></span>
-      <div class="ntext">${escapeHtml(n.text)}<div class="nmeta">${whenOf(n)?`<b>${whenOf(n)}</b> . `:''}${n.every?(n.every===1?'daily':n.every===7?'weekly':n.every===30?'monthly':'every '+n.every+' days')+' . ':''}${sh?escapeHtml(aisleOf(n))+(sh.shop&&!buyView?' . '+(sh.guess?'usually ':'at ')+escapeHtml(sh.shop):''):CAT[n.cat].label} . ${age(n.ts)}${total?`<span class="subcount">${open}/${total}</span>`:''}</div></div>
+      <div class="ntext">${escapeHtml(n.text)}<div class="nmeta">${whenOf(n)?`<b>${whenOf(n)}</b> . `:''}${n.every?(n.every===1?'daily':n.every===7?'weekly':n.every===30?'monthly':'every '+n.every+' days')+' . ':''}${n.place?'at '+escapeHtml(n.place)+' . ':''}${sh?escapeHtml(aisleOf(n))+(sh.shop&&!buyView?' . '+(sh.guess?'usually ':'at ')+escapeHtml(sh.shop):''):CAT[n.cat].label} . ${age(n.ts)}${total?`<span class="subcount">${open}/${total}</span>`:''}</div></div>
       <button class="ndone" title="done">&#10003;</button>`;
     row.querySelector('.ntext').onclick=()=>openNote(n.id);
     row.querySelector('.ndot').onclick=()=>openNote(n.id);
@@ -932,7 +949,8 @@ function todayItems(){const today=dayKey(Date.now()),out=[];
 function renderToday(){const items=todayItems(),hm=t=>new Date(t).toTimeString().slice(0,5),open=new Set();
   const d=new Date();$('#td-title').textContent=d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});
   const box=$('#td-body');
-  box.innerHTML=(items.length?'':'<p class="note">Nothing in the calendar or on the list with a time today.</p>')+items.map((it,i)=>{
+  const rh=routines().filter(n=>!n.done);
+  box.innerHTML=(rh.length?'<div class="iv-h">My rhythm today</div>'+rh.map(n=>'<div class="note-item"><div class="ntext">'+escapeHtml(n.text)+(n.place?'<div class="nmeta">'+escapeHtml(n.place)+'</div>':'')+'</div><button class="ndone" data-rhd="'+n.id+'" title="done">&#10003;</button></div>').join('')+'<div class="iv-h">The day</div>':'')+(items.length?'':'<p class="note">Nothing in the calendar or on the list with a time today.</p>')+items.map((it,i)=>{
     const r=relatedTo(it.title,it.n&&it.n.id),more=r.tasks.length+r.projects.length+r.convs.length;
     return `<div class="td-item"><div class="td-time">${it.allDay?'All day':hm(it.t)}</div><div class="td-main">
       <div class="td-name">${escapeHtml(it.title)}${it.kind==='task'?' <span class="iv-tag">task</span>':''}</div>
@@ -942,6 +960,7 @@ function renderToday(){const items=todayItems(),hm=t=>new Date(t).toTimeString()
         ${r.convs.map((s,j)=>`<button class="chip" data-tdc="${i}:${j}">${escapeHtml(s.title||'Conversation')}</button>`).join('')}</div>`:''}
     </div></div>`;}).join('')+(window.OBNative&&!(window.OBNative.todayEvents)?'<p class="note">Update the One Button app to see your calendar here.</p>':'');
   const R=k=>{const [i,j]=k.split(':').map(Number);return [relatedTo(items[i].title,items[i].n&&items[i].n.id),j];};
+  box.querySelectorAll('[data-rhd]').forEach(b=>b.onclick=()=>{const n=notes.find(x=>String(x.id)===b.dataset.rhd);if(n){tick(n);save();renderNotes();renderToday();}});
   box.querySelectorAll('[data-tdp]').forEach(b=>b.onclick=()=>{const [r,j]=R(b.dataset.tdp);openProject(r.projects[j]);});
   box.querySelectorAll('[data-tdt]').forEach(b=>b.onclick=()=>{const [r,j]=R(b.dataset.tdt);openNote(r.tasks[j].id);});
   box.querySelectorAll('[data-tdc]').forEach(b=>b.onclick=()=>{const [r,j]=R(b.dataset.tdc);openIv(r.convs[j].id+'.m4a',false);});}
@@ -954,6 +973,54 @@ function eventAlarms(now){const out=[];
   for(const e of EVENTS){if(e.allDay||e.begin<=now)continue;
     for(const m of LADDER){const at=e.begin-m*6e4;if(at>now)out.push({id:'ev:'+e.id+'|'+m,at,due:e.begin,text:e.title});}}
   return out;}
+/* Places. Jay's spaces (his home, where his kids live, a shop, a beach he looks after) with where
+ * they are, kept on this phone only. A task can belong to a place, including one he has no tie to
+ * but saw something worth doing there. When the phone is at a place, its tasks come first on the
+ * lock screen. */
+const PLACE_KINDS=[['home','My home'],['family','Family'],['work','Work'],['community','Community'],['other','Other']];
+let PLACES=LS.get('ob-places',[]), HERE=null;
+const savePlaces=()=>LS.set('ob-places',PLACES);
+const metres=(a,b)=>{const R=6371e3,r=x=>x*Math.PI/180,dl=r(b.lat-a.lat),dn=r(b.lng-a.lng);
+  const h=Math.sin(dl/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));};
+// Which of Jay's places the phone is at now, if any (within 200 m).
+function whereNow(){fixNow().then(f=>{if(!f)return;const at=PLACES.filter(p=>p.lat!=null).map(p=>({p,d:metres(f,p)})).filter(x=>x.d<=(x.p.r||200)).sort((a,b)=>a.d-b.d)[0];
+  const was=HERE&&HERE.id;HERE=at?at.p:null;if((HERE&&HERE.id)!==was){renderNotes();}});}
+// A task's place: the one chosen, or a place named when it was said ("at home" -> the home).
+function placeOf(n){if(!n.place)return null;const k=n.place.toLowerCase();
+  return PLACES.find(p=>p.name.toLowerCase()===k)||(k==='home'?PLACES.find(p=>p.kind==='home'):null)||null;}
+function renderPlaces(){const box=$('#places-list');if(!box)return;
+  box.innerHTML=PLACES.map((p,i)=>`<div class="note-item"><div class="ntext">${escapeHtml(p.name)}<div class="nmeta">${escapeHtml((PLACE_KINDS.find(k=>k[0]===p.kind)||PLACE_KINDS[4])[1])}${p.lat!=null?' . location set':' . no location yet'}${HERE&&HERE.id===p.id?' . you are here':''}</div></div>
+    <button class="tbtn" data-pl-here="${i}">Set to here</button><button class="tbtn" data-pl-del="${i}" aria-label="Remove ${escapeHtml(p.name)}">&times;</button></div>`).join('')||'<p class="note">No places yet.</p>';
+  box.querySelectorAll('[data-pl-here]').forEach(b=>b.onclick=async()=>{b.textContent='Finding…';const f=await fixNow();
+    if(!f){showToast('Could not get your location');b.textContent='Set to here';return;}
+    Object.assign(PLACES[+b.dataset.plHere],{lat:f.lat,lng:f.lng});savePlaces();renderPlaces();whereNow();showToast('Saved where it is');});
+  box.querySelectorAll('[data-pl-del]').forEach(b=>b.onclick=()=>{PLACES.splice(+b.dataset.plDel,1);savePlaces();renderPlaces();});}
+async function addPlace(name,kind,here){name=String(name||'').trim();if(!name)return null;
+  const p={id:'pl'+Date.now().toString(36),name,kind:kind||'other',r:200};
+  if(here){const f=await fixNow();if(f){p.lat=f.lat;p.lng=f.lng;}else showToast('Saved without a location');}
+  PLACES.push(p);savePlaces();renderPlaces();whereNow();return p;}
+// On a task: where it is to be done. "Here" saves the spot as a new place, for somewhere with no tie.
+function renderTaskPlace(n){const box=$('#nd-place');if(!box)return;const cur=placeOf(n);
+  box.innerHTML='<span class="nmeta" style="margin-right:6px">Where</span><button class="chip'+(n.place?'':' on')+'" data-tpl="">Anywhere</button>'
+    +PLACES.map((p,i)=>`<button class="chip${cur&&cur.id===p.id?' on':''}" data-tpl="${i}">${escapeHtml(p.name)}</button>`).join('')
+    +'<input class="nd-when" id="nd-newplace" placeholder="Somewhere new (saves where you are)" aria-label="New place" style="margin-top:6px">';
+  box.querySelectorAll('[data-tpl]').forEach(b=>b.onclick=()=>{n.place=b.dataset.tpl===''?'':PLACES[+b.dataset.tpl].name;save();renderNotes();renderTaskPlace(n);});
+  $('#nd-newplace').onchange=async e=>{const p=await addPlace(e.target.value,'other',true);if(p){n.place=p.name;save();renderNotes();renderTaskPlace(n);}};}
+
+/* Rhythm: the daily (or weekly) things that keep Jay well, as repeating tasks marked routine.
+ * Set up in Settings; they come first on the lock screen and in Today. */
+const RHYTHM_IDEAS=['Go for a swim','Yoga','Stretch','Leave my place clean'];
+const routines=()=>notes.filter(n=>n.routine&&!n.deleted);
+function renderRhythm(){const box=$('#rhythm-list');if(!box)return;
+  box.innerHTML=routines().map((n,i)=>`<div class="note-item"><div class="ntext" data-rh="${i}">${escapeHtml(n.text)}<div class="nmeta">${n.every===1?'daily':n.every===7?'weekly':n.every===30?'monthly':'every '+n.every+' days'}${n.place?' . '+escapeHtml(n.place):''}${n.done?' . done for now':''}</div></div>
+    <button class="tbtn" data-rh-del="${i}" aria-label="Remove">&times;</button></div>`).join('')||'<p class="note">Nothing yet.</p>';
+  const have=new Set(routines().map(n=>taskKey(n.text)));
+  $('#rhythm-ideas').innerHTML=RHYTHM_IDEAS.filter(t=>!have.has(taskKey(t))).map(t=>`<button class="chip" data-rh-add="${escapeHtml(t)}">+ ${escapeHtml(t)}</button>`).join('');
+  box.querySelectorAll('[data-rh]').forEach(x=>x.onclick=()=>{closeSheets();openNote(routines()[+x.dataset.rh].id);});
+  box.querySelectorAll('[data-rh-del]').forEach(b=>b.onclick=()=>{const n=routines()[+b.dataset.rhDel];n.deleted=true;save();renderRhythm();renderNotes();});
+  $('#rhythm-ideas').querySelectorAll('[data-rh-add]').forEach(b=>b.onclick=()=>addRoutine(b.dataset.rhAdd,1));}
+function addRoutine(text,every){text=String(text||'').trim();if(!text)return;const now=Date.now();
+  notes.unshift({id:now,text,cat:'do',done:false,ts:now,subs:[],due:'',place:'',routine:true,every,everyBy:'you'});save();renderNotes();renderRhythm();}
 /* Repeating tasks. A ticked-off task with "every" days comes back at the start of the day it is
  * due again (with its time of day moved along, so its alarm comes back too). Every tick is kept
  * in hist, so a task said again and again ("buy eggs") learns its own rhythm. */
@@ -1000,6 +1067,7 @@ function openNote(id){
   $('#nd-every-x').textContent=n.every?(n.everyBy==='learned'?`Learned from ${h} times you've done this. `:'')+`Comes back ${n.every===1?'the next day':'after '+n.every+' days'} once ticked off.`:(h>1?`Done ${h} times so far.`:'');
   renderShop(n);
   renderTaskProject(n);
+  renderTaskPlace(n);
   $('#nd-alarm').innerHTML=dueAt(n)?'<span class="nmeta" style="margin-right:6px">Remind me</span>'+LADDER.map(m=>`<button class="chip${ladderOf(n).includes(m)?' on':''}" data-rm="${m}">${m===60?'1 hour':m+' min'} before</button>`).join(''):'';
   $('#nd-alarm').querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{const m=+b.dataset.rm,l=ladderOf(n);n.noAlarm=false;n.remind=l.includes(m)?l.filter(x=>x!==m):[...l,m].sort((x,y)=>y-x);save();openNote(id);});
   $('#nd-status').textContent='Tap the mic and speak a subtask, or break it down automatically.';
@@ -1184,10 +1252,14 @@ function renderLock(){
   // One closed row per kind of task (Buy, Fix, Check, Do); tap to open. Open rows are remembered.
   lkList.innerHTML='';
   const open=LS.get('ob-lockopen',{});
-  for(const key of ['buy','fix','check','do']){
-    let group=items.filter(n=>(CAT[n.cat]?n.cat:'do')===key);if(key==='buy')group=group.slice().sort((a,b)=>(shopOf(a).shop||'~').localeCompare(shopOf(b).shop||'~'));
+  // First the daily rhythm, then whatever belongs to the place the phone is at, then the kinds.
+  const here=HERE?items.filter(n=>!n.routine&&placeOf(n)&&placeOf(n).id===HERE.id):[];
+  const firsts=new Set([...items.filter(n=>n.routine),...here]);
+  const GROUPS={rhythm:{label:'My rhythm',c:'var(--spark)',items:items.filter(n=>n.routine)},here:{label:HERE?'Here: '+HERE.name:'',c:'#1A1A1A',items:here}};
+  for(const key of ['rhythm','here','buy','fix','check','do']){
+    let group=GROUPS[key]?GROUPS[key].items:items.filter(n=>!firsts.has(n)&&(CAT[n.cat]?n.cat:'do')===key);if(key==='buy')group=group.slice().sort((a,b)=>(shopOf(a).shop||'~').localeCompare(shopOf(b).shop||'~'));
     if(!group.length) continue;
-    const cat=CAT[key], isOpen=!!open[key];
+    const cat=GROUPS[key]||CAT[key], isOpen=key in open?!!open[key]:!!GROUPS[key];
     const head=document.createElement('button');
     head.className='lk-group'+(isOpen?' open':'');head.setAttribute('aria-expanded',isOpen);
     head.innerHTML=`<span class="ndot" style="background:${cat.c}"></span><span class="lk-gname">${cat.label}</span><span class="lk-gcount">${group.length}</span><svg class="lk-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
@@ -1556,6 +1628,11 @@ function boot(){
   renderClaude();
   setTimeout(celebrate,1500);
   if(NATIVE&&NATIVE.processInterview){ivRefresh();addEventListener('online',ivRefresh);}
+  whereNow();renderPlaces();renderRhythm();
+  $('#pl-kind').innerHTML=PLACE_KINDS.map(([k,l])=>'<option value="'+k+'">'+l+'</option>').join('');
+  $('#pl-add-here').onclick=async()=>{await addPlace($('#pl-name').value,$('#pl-kind').value,true);$('#pl-name').value='';};
+  $('#pl-add').onclick=async()=>{await addPlace($('#pl-name').value,$('#pl-kind').value,false);$('#pl-name').value='';};
+  $('#rh-add').onclick=()=>{addRoutine($('#rh-text').value,+$('#rh-every').value);$('#rh-text').value='';};
   loadEvents();renderSpaces();spRefresh();revive();syncAlarms();renderProjMain();projRefresh();maybeBrief();
 }
 boot();
