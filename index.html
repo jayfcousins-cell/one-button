@@ -71,6 +71,14 @@
   .pill.alt{background:#F5F5F5;border:1px solid #D4D4D4}
   .pill:active{transform:scale(.96)}
   .hint{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:#777;text-align:center;letter-spacing:.4px;max-width:340px}
+  .alarms{display:flex;flex-direction:column;width:100%;max-width:420px}
+  .alarms:empty{display:none}
+  .al-row{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;padding:8px 10px;margin:4px 0;border:1px solid currentColor;border-radius:4px;font-size:15px;line-height:1.3}
+  .al-row.al-ring{background:var(--spark);color:#1A1A1A;border-color:#1A1A1A}
+  .al-t{font:600 16px "IBM Plex Mono",monospace;min-width:44px}
+  .al-x{flex:1;min-width:0}
+  .al-due{display:block;font-size:12.5px;opacity:.7}
+  .al-row .tbtn{min-height:44px}
   .sheet{position:fixed;inset:0;z-index:5;background:var(--cream);color:var(--ink);transform:translateY(100%);transition:transform .32s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
   .sheet.open{transform:translateY(0)}
   .sheet-bar{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line)}
@@ -247,6 +255,7 @@
       <div class="rb" id="result-body"></div>
       <div class="acts" id="result-acts"></div>
     </div>
+    <div id="alarms-main" class="alarms"></div>
     <div class="hint" id="hint">Say a thing to do, something you noticed, or a person to reach. I sort which is which.</div>
   </div>
   <nav class="constellation" aria-label="Canopy apps">
@@ -292,6 +301,7 @@
     <span class="nd-cat" id="nd-cat"></span>
     <div class="nd-edit" id="nd-cats"></div>
     <div class="nd-edit"><input class="nd-when" id="nd-when" placeholder="When, e.g. Friday" aria-label="When" /></div>
+    <div class="nd-edit" id="nd-alarm"></div>
     <div class="nd-edit" id="nd-every" aria-label="Repeats"></div>
     <div class="nd-status" id="nd-every-x" style="margin-top:0"></div>
     <div class="nd-edit" id="nd-shop"></div>
@@ -358,6 +368,7 @@
   <div class="lk-top">
     <div><div class="lk-time" id="lk-time"></div><div class="lk-date" id="lk-date"></div></div>
   </div>
+  <div id="alarms-lock" class="alarms"></div>
   <div class="lk-head"><span>To do</span><span id="lk-count"></span></div>
   <div class="lk-list" id="lk-list"></div>
   <div class="lk-foot">
@@ -408,7 +419,7 @@ function save(){ LS.set('ob-notes',notes); queueSync(); syncAlarms(); }
 
 /* Sync (stage 1): the server keeps the master copy so phone and browser agree. Per task, the
  * latest change wins. Coordinates never go up: they live in WHERE, on this device only. */
-const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt','every','everyBy','hist','aisle'];
+const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt','every','everyBy','hist','aisle','noAlarm','alarmSeen'];
 function syncShape(n){const o={id:String(n.id)};SYNC_FIELDS.forEach(k=>{if(n[k]!==undefined)o[k]=n[k];});return o;}
 function syncSig(n){return JSON.stringify(syncShape({...n,updated:0}));}
 let synced=LS.get('ob-synced',{}); // id -> what the server last agreed on
@@ -752,11 +763,29 @@ function whenOf(n){const t=dueAt(n);if(!t)return n&&n.due?escapeHtml(n.due):'';c
 /* Alarms: an hour before any open task with a time. The phone keeps them (and puts them back
  * after a restart); this hands over the full set whenever the list changes. */
 const ALARM_BEFORE=60*60*1000;
-function syncAlarms(){const N=window.OBNative;if(!(N&&N.syncAlarms))return;
+setInterval(()=>{if(!document.hidden)renderAlarms();},30000);
+function syncAlarms(){renderAlarms();const N=window.OBNative;if(!(N&&N.syncAlarms))return;
   const now=Date.now(),out=[];
-  for(const n of notes){const t=dueAt(n);if(!t||n.done||n.deleted||t<=now)continue;
+  for(const n of notes){const t=dueAt(n);if(!t||n.done||n.deleted||n.noAlarm||t<=now)continue;
     out.push({id:String(n.id),at:Math.max(t-ALARM_BEFORE,now+5000),due:t,text:n.text});}
   try{N.syncAlarms(JSON.stringify(out));}catch(e){}}
+/* The alarms, where they can be seen and switched off: under the button on the main screen and at
+ * the top of the lock screen list. One that has gone off stays highlighted until dismissed or done. */
+function renderAlarms(){
+  const now=Date.now(),rows=[];
+  for(const n of notes){const t=dueAt(n);if(!t||n.done||n.deleted||n.noAlarm)continue;
+    const at=t-ALARM_BEFORE,ringing=now>=at&&now<t+ALARM_BEFORE&&n.alarmSeen!==t;
+    if(t>now||ringing)rows.push({n,t,ringing});}
+  rows.sort((a,b)=>(b.ringing-a.ringing)||(a.t-b.t));
+  const hm=t=>new Date(t).toTimeString().slice(0,5);
+  for(const box of [$('#alarms-main'),$('#alarms-lock')]){if(!box)continue;
+    box.innerHTML=rows.slice(0,4).map((r,i)=>`<div class="al-row${r.ringing?' al-ring':''}"><span class="al-t">${r.ringing?'Now':hm(r.t-ALARM_BEFORE)}</span>
+      <span class="al-x">${escapeHtml(r.n.text)}<span class="al-due">${whenOf(r.n)}</span></span>
+      ${r.ringing?`<button class="tbtn" data-al-seen="${i}">Dismiss</button><button class="tbtn" data-al-done="${i}">Done</button>`:`<button class="tbtn" data-al-off="${i}">Turn off</button>`}</div>`).join('');
+    box.querySelectorAll('[data-al-off]').forEach(b=>b.onclick=()=>{rows[+b.dataset.alOff].n.noAlarm=true;save();renderAlarms();showToast('Alarm off. Turn it back on from the task.');});
+    box.querySelectorAll('[data-al-seen]').forEach(b=>b.onclick=()=>{const r=rows[+b.dataset.alSeen];r.n.alarmSeen=r.t;save();renderAlarms();});
+    box.querySelectorAll('[data-al-done]').forEach(b=>b.onclick=()=>{const r=rows[+b.dataset.alDone];tick(r.n);noteWhere(r.n.id,'done',fixNow());save();renderNotes();renderAlarms();});}
+}
 /* Repeating tasks. A ticked-off task with "every" days comes back at the start of the day it is
  * due again (with its time of day moved along, so its alarm comes back too). Every tick is kept
  * in hist, so a task said again and again ("buy eggs") learns its own rhythm. */
@@ -802,6 +831,8 @@ function openNote(id){
   const h=(n.hist||[]).length;
   $('#nd-every-x').textContent=n.every?(n.everyBy==='learned'?`Learned from ${h} times you've done this. `:'')+`Comes back ${n.every===1?'the next day':'after '+n.every+' days'} once ticked off.`:(h>1?`Done ${h} times so far.`:'');
   renderShop(n);
+  $('#nd-alarm').innerHTML=dueAt(n)?`<button class="chip${n.noAlarm?"":" on"}" id="nd-alarm-t">Alarm an hour before: ${n.noAlarm?"off":"on"}</button>`:"";
+  const at=$('#nd-alarm-t');if(at)at.onclick=()=>{n.noAlarm=!n.noAlarm;save();renderAlarms();openNote(id);};
   $('#nd-status').textContent='Tap the mic and speak a subtask, or break it down automatically.';
   renderSubs();
   openSheet('#sheet-note');
