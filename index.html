@@ -36,8 +36,12 @@
   .ico-btn{background:transparent;border:1px solid rgba(26,26,26,.25);color:var(--ink);
     width:40px;height:40px;border-radius:50%;font-size:17px;display:grid;place-items:center;cursor:pointer}
   .ico-btn:active{transform:scale(.94)}
-  .ico-row{display:flex;gap:10px}
-  .stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;padding:0 24px}
+  .ico-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+  .stage{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;align-items:center;gap:22px;padding:24px 16px 30px}
+  .todo{width:100%;max-width:520px;text-align:left}
+  .todo .empty{padding:20px}
+  .pj-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:18px 0 2px;padding:6px 0;border-bottom:2px solid var(--terra);color:var(--terra);font:700 15px "Inter Tight",sans-serif;cursor:pointer;background:none;border-top:0;border-left:0;border-right:0;width:100%;text-align:left;min-height:44px}
+  .pj-h small{font:400 12px "IBM Plex Mono",monospace;opacity:.75}
   .status{font-family:"IBM Plex Mono",monospace;font-size:12.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);min-height:18px;text-align:center}
   .status.live{color:var(--ink)}
   .orb-shell{position:relative;width:230px;height:230px;display:grid;place-items:center}
@@ -79,10 +83,6 @@
   .td-name{font-weight:600}
   .td-rel{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .set-h{display:block;font-family:"IBM Plex Mono";font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-  .projmain{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:100%;max-width:420px}
-  .projmain:empty{display:none}
-  .pm-card{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:44px;padding:8px 12px;border:1px solid var(--terra);border-radius:4px;background:var(--cream);color:var(--terra);font:600 14px "Inter",sans-serif;cursor:pointer;text-align:left;max-width:100%}
-  .pm-meta{font:400 12px "IBM Plex Mono",monospace;opacity:.7}
   .alarms{display:flex;flex-direction:column;width:100%;max-width:420px}
   .alarms:empty{display:none}
   .al-row{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;padding:8px 10px;margin:4px 0;border:1px solid currentColor;border-radius:4px;font-size:15px;line-height:1.3}
@@ -105,7 +105,7 @@
   .note{font-size:12.5px;color:var(--muted);line-height:1.5;margin:10px 0 0}
   .cat-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
   .chip{border:1px solid var(--line);background:#fff;border-radius:0;padding:7px 13px;font-size:12.5px;font-weight:500;cursor:pointer;color:var(--ink)}
-  .chip.on{color:#fff}
+  .chip.on{color:var(--cream);background:var(--forest-2);border-color:var(--forest-2)}
   .note-item{display:flex;gap:12px;align-items:flex-start;padding:13px 0;border-bottom:1px solid var(--line);cursor:pointer}
   .ndot{width:9px;height:9px;border-radius:50%;margin-top:6px;flex:none}
   .ntext{flex:1;font-size:15px;line-height:1.4}
@@ -248,8 +248,6 @@
     <div class="ico-row">
       <button class="ico-btn" id="open-today" title="Today" aria-label="Today"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>
       <button class="ico-btn" id="open-proj" title="Projects" aria-label="Projects"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
-      <button class="ico-btn" id="open-notes" title="Notices">&#9636;</button>
-      <button class="ico-btn" id="open-saver" title="Screensaver">&#9673;</button>
       <button class="ico-btn" id="open-lock" title="Lock screen view" aria-label="Lock screen view">&#9638;</button>
       <button class="ico-btn" id="open-ivs" title="Interviews" aria-label="Interviews" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
       <button class="ico-btn" id="open-settings" title="Settings">&#9881;</button>
@@ -269,23 +267,8 @@
       <div class="rb" id="result-body"></div>
       <div class="acts" id="result-acts"></div>
     </div>
-    <div id="proj-main" class="projmain"></div>
     <div id="alarms-main" class="alarms"></div>
-    <div class="hint" id="hint">Say a thing to do, something you noticed, or a person to reach. I sort which is which.</div>
-  </div>
-  <nav class="constellation" aria-label="Canopy apps">
-    <span class="c-lbl">Canopy</span>
-    <a href="https://canopy-website-ef7a8.web.app/shell/">Shell</a>
-    <a href="https://one-fine-day-canopy.web.app">One Fine Day</a>
-    <a href="https://inner-weather-canopy.web.app">Inner Weather</a>
-    <a href="https://canopy-website-ef7a8.web.app/idea-garden/">Idea Garden</a>
-    <a href="https://canopy-website-ef7a8.web.app/dashboards/demand-board/">Designs &amp; Desires</a>
-  </nav>
-</div>
-
-<div class="sheet" id="sheet-notes">
-  <div class="sheet-bar"><h2>Notices</h2><button class="sheet-x" data-close>&times;</button></div>
-  <div class="sheet-body">
+    <section class="todo" id="todo" aria-label="To do">
     <div id="claude-strip"></div>
     <div id="sp-strip"></div>
     <div class="cat-row" id="cat-filter">
@@ -296,7 +279,17 @@
       <button class="chip" data-cat="do">Do</button>
     </div>
     <div id="notes-list"></div>
+    </section>
+    <div class="hint" id="hint">Say a thing to do, something you noticed, or a person to reach. I sort which is which.</div>
   </div>
+  <nav class="constellation" aria-label="Canopy apps">
+    <span class="c-lbl">Canopy</span>
+    <a href="https://canopy-website-ef7a8.web.app/shell/">Shell</a>
+    <a href="https://one-fine-day-canopy.web.app">One Fine Day</a>
+    <a href="https://inner-weather-canopy.web.app">Inner Weather</a>
+    <a href="https://canopy-website-ef7a8.web.app/idea-garden/">Idea Garden</a>
+    <a href="https://canopy-website-ef7a8.web.app/dashboards/demand-board/">Designs &amp; Desires</a>
+  </nav>
 </div>
 
 <div class="sheet" id="sheet-cele">
@@ -334,6 +327,7 @@
 <div class="sheet" id="sheet-settings">
   <div class="sheet-bar"><h2>Settings</h2><button class="sheet-x" data-close>&times;</button></div>
   <div class="sheet-body">
+    <div class="iv-row" style="margin-bottom:18px"><button class="tbtn" id="open-saver">Screensaver</button><button class="tbtn" id="set-lockview">Lock screen view</button></div>
     <div class="field" id="key-field">
       <label for="set-key">App key (browser only)</label>
       <input id="set-key" type="password" autocomplete="off" placeholder="paste the One Button key" />
@@ -535,7 +529,9 @@ function pickMime(){
   if(!window.MediaRecorder||!MediaRecorder.isTypeSupported) return '';
   return ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'].find(t=>MediaRecorder.isTypeSupported(t))||'';
 }
-function recognize({onLive,onStart,onEnd}){
+// Over LONG_S seconds a recording is a conversation, not a task: it goes up whole (onLong).
+const LONG_S=75;
+function recognize({onLive,onStart,onEnd,onLong}){
   if(!(navigator.mediaDevices&&window.MediaRecorder)){ onEnd&&onEnd('','no-mic'); return {stop(){}}; }
   let stopEarly=false;
   const handle={stop(){stopEarly=true;}};
@@ -546,6 +542,7 @@ function recognize({onLive,onStart,onEnd}){
     mr.onstop=()=>{
       stream.getTracks().forEach(t=>t.stop());
       const blob=new Blob(chunks,{type:mr.mimeType||mime||'audio/webm'});
+      if(onLong&&Date.now()-began>LONG_S*1000){onLong(blob,began);return;}
       onLive&&onLive('transcribing...');
       const fr=new FileReader();
       fr.onload=()=>{
@@ -557,7 +554,7 @@ function recognize({onLive,onStart,onEnd}){
       };
       fr.readAsDataURL(blob);
     };
-    mr.start();
+    mr.start();const began=Date.now();
     handle.stop=()=>{try{mr.stop();}catch{}};
     if(stopEarly){handle.stop();return;}
     onStart&&onStart();
@@ -580,7 +577,9 @@ function listen(){
       if(err==='no-mic'){statusEl.textContent='no mic available here';return;}
       if(err==='locked'){statusEl.textContent='app key missing, add it in settings';return;}
       if(err==='transcribe'){statusEl.textContent='could not transcribe, tap to retry';return;}
-      if(t){statusEl.textContent='thinking...';route(t);} else {statusEl.textContent='tap to speak';}}
+      if(t){statusEl.textContent='thinking...';route(t);} else {statusEl.textContent='tap to speak';}},
+    onLong:(blob,began)=>{mainLive=false;shell.classList.remove('listening');statusEl.classList.remove('live');barsStop();
+      statusEl.textContent='a conversation: writing it up...';ivUploadWeb(blob,began).then(ok=>{statusEl.textContent=ok?'tap to speak':'could not send it, tap to try again';});}
   });
 }
 orb.addEventListener('click',()=>{ if(mainLive){try{mainRec.stop()}catch{}} else listen(); });
@@ -618,7 +617,14 @@ Return ONLY raw JSON, no markdown:
 }
 Rules: "remind me", "I noticed", "X is broken", "buy Y", "check Z" are captures. "tell/message/ping/text/whatsapp/dm someone" -> action message. "call/phone/ring someone" -> action call. "book/schedule/add ... to calendar" -> action calendar. Use channel "auto" unless the user names one. Keep text tight. Today is ${new Date().toISOString()}.`;
 
+// "Claude, ..." or "for Claude ..." goes to Claude on the laptop rather than onto the list.
+const FOR_CLAUDE=/^s*(hey |ok |okay )?(claude|agent)[,:. ]*|^s*(for|ask|tell) (claude|an agent|the agent)(s+to)?[,:. ]*/i;
+async function askClaudeDirect(text){
+  const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({text})});
+  if(!r.ok)throw new Error('ask '+r.status);const a=await r.json();ASKS=[a,...ASKS];LS.set('ob-asks',ASKS);renderClaude();return a;}
 async function route(text){
+  if(FOR_CLAUDE.test(text)){try{const a=await askClaudeDirect(text.replace(FOR_CLAUDE,'').trim()||text);
+    statusEl.textContent=a.kind==='app'?'sent to Claude: it will show you a preview to approve':'sent to Claude';}catch{statusEl.textContent='could not reach Claude, tap to retry';}return;}
   orb.classList.add('busy'); hint.style.display='none';
   try{
     const out=parseJSON(await ask([{role:'system',content:SYS},{role:'user',content:text}])) || {kind:'answer',answer:'Sorry, did not get that.'};
@@ -736,14 +742,28 @@ let filter='all';
 function renderNotes(){
   renderLock();
   const list=$('#notes-list');
-  let items=notes.filter(n=>!n.done && (filter==='all'||n.cat===filter));
-  if(!items.length){list.innerHTML=`<div class="empty">Nothing here yet.<br>Speak something you noticed and it lands here.</div>`;return;}
+  let items=notes.filter(n=>!n.done && !n.deleted && (filter==='all'||n.cat===filter));
   list.innerHTML='';
+  // The projects ticked for the main screen come first, each with its own to-dos under it;
+  // everything else follows by kind of action.
+  const top=PROJ.projects.filter(p=>p.main&&projLive(p)),inTop=new Set();
+  for(const p of top){const mine=items.filter(n=>tasksOf(p).includes(n));mine.forEach(n=>inTop.add(n.id));
+    const hd=document.createElement('button');hd.className='pj-h';
+    hd.innerHTML=`<span>${escapeHtml(p.name)}</span><small>${escapeHtml(p.status)}${mine.length?' . '+mine.length+' to do':''}</small>`;
+    hd.onclick=()=>openProject(p);list.appendChild(hd);
+    for(const n of mine)list.appendChild(noteRow(n));}
+  items=items.filter(n=>!inTop.has(n.id));
+  if(top.length&&items.length){const hd=document.createElement('div');hd.className='iv-h';hd.style.marginTop='18px';hd.textContent='Everything else';list.appendChild(hd);}
+  if(!items.length&&!top.length){list.innerHTML=`<div class="empty">Nothing here yet.<br>Speak something you noticed and it lands here.</div>`;return;}
   // The Buy list reads like a round of the shops: grouped by shop, then by kind of thing.
   const buyView=filter==='buy';let lastShop=null;
   if(buyView)items=items.slice().sort((a,b)=>(shopOf(a).shop||'~').localeCompare(shopOf(b).shop||'~')||aisleOf(a).localeCompare(aisleOf(b)));
   for(const n of items){
     if(buyView){const s=shopOf(n).shop||'Shop not set yet';if(s!==lastShop){lastShop=s;const hd=document.createElement('div');hd.className='iv-h';hd.textContent=s;list.appendChild(hd);}}
+    list.appendChild(noteRow(n));
+  }
+}
+function noteRow(n){
     const sh=n.cat==='buy'?shopOf(n):null;
     const open=(n.subs||[]).filter(s=>!s.done).length, total=(n.subs||[]).length;
     const row=document.createElement('div');row.className='note-item';
@@ -753,8 +773,7 @@ function renderNotes(){
     row.querySelector('.ntext').onclick=()=>openNote(n.id);
     row.querySelector('.ndot').onclick=()=>openNote(n.id);
     row.querySelector('.ndone').onclick=(e)=>{e.stopPropagation();tick(n);noteWhere(n.id,'done',fixNow());save();renderNotes();};
-    list.appendChild(row);
-  }
+    return row;
 }
 /* Shopping in Dahab: each thing to buy has a kind (its aisle) and a shop. Set a shop once and
  * the app remembers it for that item, and guesses it for other things of the same kind. */
@@ -871,17 +890,14 @@ async function projSave(p){
   }catch{showToast('Could not save the project, try again');}}
 const projLive=p=>!['Done','Dropped'].includes(p.status);
 const tasksOf=p=>notes.filter(n=>!n.deleted&&(n.project===p.id||(!n.project&&n.from&&(p.from||[]).includes(n.from))));
-function renderProjMain(){const box=$('#proj-main');if(!box)return;
-  const on=PROJ.projects.filter(p=>p.main&&projLive(p));
-  box.innerHTML=on.map((p,i)=>{const open=tasksOf(p).filter(n=>!n.done).length;
-    return `<button class="pm-card" data-pm="${i}"><span class="pm-name">${escapeHtml(p.name)}</span><span class="pm-meta">${escapeHtml(p.status)}${open?' . '+open+' to do':''}</span></button>`;}).join('');
-  box.querySelectorAll('[data-pm]').forEach(b=>b.onclick=()=>openProject(on[+b.dataset.pm]));}
+// Ticked projects head the to-do list on the main screen.
+function renderProjMain(){renderNotes();}
 function renderProj(){const box=$('#proj-list');
   const live=PROJ.projects.filter(projLive),rest=PROJ.projects.filter(p=>!projLive(p));
-  const conv=PROJ.proposed.filter(p=>p.source==='conversation'),asks=PROJ.proposed.filter(p=>p.source==='claude');
+  const conv=PROJ.proposed.filter(p=>p.source==='conversation'),asks=PROJ.proposed.filter(p=>p.source==='claude'),gard=PROJ.proposed.filter(p=>p.source==='garden');
   const row=(p,i,kind)=>{const open=kind==='mine'?tasksOf(p).filter(n=>!n.done).length:0;
     const meta=kind==='mine'?`${escapeHtml(p.status)}${p.kind?' . '+escapeHtml(p.kind):''}${open?' . '+open+' to do':''}`
-      :escapeHtml([p.fromTitle?'From '+p.fromTitle:'',(p.people||[]).length?'with '+p.people.join(', '):'',p.source==='claude'?(p.answered?'Claude answered':'Claude is looking'):''].filter(Boolean).join(' . '));
+      :escapeHtml([p.source==='garden'?[p.kind,p.stage].filter(Boolean).join(', '):'',p.fromTitle?'From '+p.fromTitle:'',(p.people||[]).length?'with '+p.people.join(', '):'',p.source==='claude'?(p.answered?'Claude answered':'Claude is looking'):''].filter(Boolean).join(' . '));
     return `<div class="note-item">${kind==='mine'?`<input type="checkbox" class="pj-main" data-main="${i}" ${p.main?'checked':''} aria-label="Show on the main screen" style="width:22px;height:22px;margin-right:10px">`:''}
       <div class="ntext" data-${kind}="${i}">${escapeHtml(p.name)}<div class="nmeta">${meta}</div></div>
       ${kind==='mine'?'':`<button class="tbtn" data-take="${kind}:${i}">Steward</button><button class="tbtn" data-drop="${kind}:${i}">Not mine</button>`}</div>`;};
@@ -890,15 +906,16 @@ function renderProj(){const box=$('#proj-list');
     <div class="iv-row" style="margin:8px 0 14px"><input class="nd-when" id="pj-new" placeholder="Add a project" aria-label="Add a project" style="flex:1"></div>
     ${conv.length?`<div class="iv-h">Proposed from your conversations</div>${conv.map((p,i)=>row(p,i,'conv')).join('')}`:''}
     ${asks.length?`<div class="iv-h">From what you asked Claude to explore</div>${asks.map((p,i)=>row(p,i,'ask')).join('')}`:''}
+    ${gard.length?`<details style="margin-top:14px"><summary class="iv-h">From your Idea Garden (${gard.length})</summary>${[...new Set(gard.map(p=>p.kind||'Other'))].sort().map(k=>`<div class="nmeta" style="margin:12px 0 2px">${escapeHtml(k)}</div>`+gard.map((p,i)=>(p.kind||'Other')===k?row(p,i,'gard'):'').join('')).join('')}</details>`:''}
     ${rest.length?`<details style="margin-top:14px"><summary class="iv-h">Done and dropped (${rest.length})</summary>${rest.map((p,i)=>`<div class="note-item"><div class="ntext" data-rest="${i}">${escapeHtml(p.name)}<div class="nmeta">${escapeHtml(p.status)}</div></div></div>`).join('')}</details>`:''}`;
-  const pick=k=>k==='conv'?conv:asks;
+  const pick=k=>k==='conv'?conv:k==='gard'?gard:asks;
   box.querySelectorAll('[data-main]').forEach(c=>c.onchange=()=>{const p=live[+c.dataset.main];projSave({...p,main:c.checked});});
   box.querySelectorAll('[data-mine]').forEach(x=>x.onclick=()=>openProject(live[+x.dataset.mine]));
   box.querySelectorAll('[data-rest]').forEach(x=>x.onclick=()=>openProject(rest[+x.dataset.rest]));
-  box.querySelectorAll('[data-conv],[data-ask]').forEach(x=>x.onclick=()=>{const k=x.dataset.conv!==undefined?'conv':'ask',p=pick(k)[+(x.dataset.conv??x.dataset.ask)];
+  box.querySelectorAll('[data-conv],[data-ask],[data-gard]').forEach(x=>x.onclick=()=>{const k=x.dataset.conv!==undefined?'conv':x.dataset.gard!==undefined?'gard':'ask',p=pick(k)[+(x.dataset.conv??x.dataset.ask??x.dataset.gard)];
     showToast(p.about?p.about.slice(0,160):'No more detail yet');});
   box.querySelectorAll('[data-take]').forEach(b=>b.onclick=async()=>{const [k,i]=b.dataset.take.split(':'),p=pick(k)[+i];
-    await projSave({...p,status:p.source==='claude'?'Exploring':'Idea',main:false});renderProj();showToast('Now stewarding '+p.name);});
+    await projSave({...p,status:p.source==='claude'?'Exploring':p.source==='garden'?p.status:'Idea',main:false});renderProj();showToast('Now stewarding '+p.name);});
   box.querySelectorAll('[data-drop]').forEach(b=>b.onclick=async()=>{const [k,i]=b.dataset.drop.split(':'),p=pick(k)[+i];
     await projSave({...p,status:'Dropped',main:false});renderProj();});
   $('#pj-new').onchange=async e=>{const name=e.target.value.trim();if(!name)return;await projSave({name,status:'Idea',source:'you',main:true});renderProj();};}
@@ -942,15 +959,19 @@ function relatedTo(title,skipId){const w=wordsOf(title);if(!w.size)return {tasks
     tasks:notes.filter(n=>!n.done&&!n.deleted&&n.id!==skipId&&hit(n.text)).slice(0,5),
     projects:PROJ.projects.filter(p=>projLive(p)&&(hit(p.name)||hit(p.about))).slice(0,3),
     convs:Object.values(IVS).filter(s=>s.status==='done'&&((s.people||[]).some(p=>w.has(p.toLowerCase()))||hit(s.title))).sort((a,b)=>(b.created||0)-(a.created||0)).slice(0,3)};}
-function todayItems(){const today=dayKey(Date.now()),out=[];
+function todayItems(today=dayKey(Date.now())){const out=[];
   for(const e of EVENTS)if(dayKey(e.begin)===today)out.push({kind:'event',t:e.allDay?0:e.begin,title:e.title,where:e.where,allDay:e.allDay,e});
   for(const n of notes){const t=dueAt(n);if(t&&!n.done&&!n.deleted&&dayKey(t)===today)out.push({kind:'task',t,title:n.text,n});}
   return out.sort((a,b)=>a.t-b.t);}
-function renderToday(){const items=todayItems(),hm=t=>new Date(t).toTimeString().slice(0,5),open=new Set();
-  const d=new Date();$('#td-title').textContent=d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});
-  const box=$('#td-body');
-  const rh=routines().filter(n=>!n.done);
-  box.innerHTML=(rh.length?'<div class="iv-h">My rhythm today</div>'+rh.map(n=>'<div class="note-item"><div class="ntext">'+escapeHtml(n.text)+(n.place?'<div class="nmeta">'+escapeHtml(n.place)+'</div>':'')+'</div><button class="ndone" data-rhd="'+n.id+'" title="done">&#10003;</button></div>').join('')+'<div class="iv-h">The day</div>':'')+(items.length?'':'<p class="note">Nothing in the calendar or on the list with a time today.</p>')+items.map((it,i)=>{
+// Any day in the next month: today by default, the chips along the top to look ahead.
+let TD_DAY=0;
+function renderToday(){const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+TD_DAY);
+  const items=todayItems(dayKey(d)),hm=t=>new Date(t).toTimeString().slice(0,5),open=new Set();
+  $('#td-title').textContent=TD_DAY===0?'Today':TD_DAY===1?'Tomorrow':d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});
+  const box=$('#td-body'),days=Array.from({length:31},(_,i)=>{const x=new Date();x.setHours(12,0,0,0);x.setDate(x.getDate()+i);
+    const n=todayItems(dayKey(x)).length;return `<button class="chip${i===TD_DAY?' on':''}" data-tdd="${i}" style="flex:none">${i===0?'Today':i===1?'Tomorrow':x.toLocaleDateString(undefined,{weekday:'short',day:'numeric'})}${n?' . '+n:''}</button>`;}).join('');
+  const rh=TD_DAY?[]:routines().filter(n=>!n.done);
+  box.innerHTML=`<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px">${days}</div>`+(rh.length?'<div class="iv-h">My rhythm today</div>'+rh.map(n=>'<div class="note-item"><div class="ntext">'+escapeHtml(n.text)+(n.place?'<div class="nmeta">'+escapeHtml(n.place)+'</div>':'')+'</div><button class="ndone" data-rhd="'+n.id+'" title="done">&#10003;</button></div>').join('')+'<div class="iv-h">The day</div>':'')+(items.length?'':'<p class="note">Nothing in the calendar or on the list with a time this day.</p>')+items.map((it,i)=>{
     const r=relatedTo(it.title,it.n&&it.n.id),more=r.tasks.length+r.projects.length+r.convs.length;
     return `<div class="td-item"><div class="td-time">${it.allDay?'All day':hm(it.t)}</div><div class="td-main">
       <div class="td-name">${escapeHtml(it.title)}${it.kind==='task'?' <span class="iv-tag">task</span>':''}</div>
@@ -961,16 +982,18 @@ function renderToday(){const items=todayItems(),hm=t=>new Date(t).toTimeString()
     </div></div>`;}).join('')+(window.OBNative&&!(window.OBNative.todayEvents)?'<p class="note">Update the One Button app to see your calendar here.</p>':'');
   const R=k=>{const [i,j]=k.split(':').map(Number);return [relatedTo(items[i].title,items[i].n&&items[i].n.id),j];};
   box.querySelectorAll('[data-rhd]').forEach(b=>b.onclick=()=>{const n=notes.find(x=>String(x.id)===b.dataset.rhd);if(n){tick(n);save();renderNotes();renderToday();}});
+  box.querySelectorAll('[data-tdd]').forEach(b=>b.onclick=()=>{TD_DAY=+b.dataset.tdd;renderToday();});
+  const on=box.querySelector('[data-tdd].on');if(on)on.scrollIntoView({inline:'center',block:'nearest'});
   box.querySelectorAll('[data-tdp]').forEach(b=>b.onclick=()=>{const [r,j]=R(b.dataset.tdp);openProject(r.projects[j]);});
   box.querySelectorAll('[data-tdt]').forEach(b=>b.onclick=()=>{const [r,j]=R(b.dataset.tdt);openNote(r.tasks[j].id);});
   box.querySelectorAll('[data-tdc]').forEach(b=>b.onclick=()=>{const [r,j]=R(b.dataset.tdc);openIv(r.convs[j].id+'.m4a',false);});}
-function openToday(){loadEvents();if(lock.classList.contains('on'))hideLock();openSheet('#sheet-today');renderToday();}
+function openToday(){loadEvents();TD_DAY=0;if(lock.classList.contains('on'))hideLock();openSheet('#sheet-today');renderToday();}
 // First use after 8am: the briefing, once a day.
 function maybeBrief(){if(!window.OBNative)return;const now=new Date();if(now.getHours()<BRIEF_HOUR)return;const k=dayKey(now);
   if(LS.get('ob-brief-day','')===k)return;LS.set('ob-brief-day',k);openToday();}
 // Event reminders ride along with the task alarms.
 function eventAlarms(now){const out=[];
-  for(const e of EVENTS){if(e.allDay||e.begin<=now)continue;
+  for(const e of EVENTS){if(e.allDay||e.begin<=now||e.begin>now+2*864e5)continue;
     for(const m of LADDER){const at=e.begin-m*6e4;if(at>now)out.push({id:'ev:'+e.id+'|'+m,at,due:e.begin,text:e.title});}}
   return out;}
 /* Places. Jay's spaces (his home, where his kids live, a shop, a beach he looks after) with where
@@ -1197,12 +1220,10 @@ $('#set-save').onclick=()=>{const k=$('#set-key').value.trim(); if(k) LS.set('ob
   LS.set('ob-lockfull',$('#set-lockfull').checked);showToast('Saved');closeSheets();statusEl.textContent='tap to speak';};
 
 function openSheet(sel){ closeSheets(); $(sel).classList.add('open');
-  if(sel==='#sheet-notes')renderNotes();
   if(sel==='#sheet-settings'){$('#set-key').value='';$('#key-field').style.display=NATIVE?'none':'';
     $('#set-lockfull').checked=LS.get('ob-lockfull',true);renderContacts();$('#upd').style.display=NATIVE?'block':'none';}
   if(sel==='#sheet-ivs'){renderSpaces();renderInterviews();ivRefresh();spRefresh();}}
 function closeSheets(){document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('open'));}
-$('#open-notes').onclick=()=>openSheet('#sheet-notes');
 $('#open-proj').onclick=()=>{openSheet('#sheet-proj');renderProj();projRefresh();};
 $('#open-settings').onclick=()=>openSheet('#sheet-settings');
 $('#open-ivs').onclick=()=>openSheet('#sheet-ivs');
@@ -1210,7 +1231,7 @@ document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{
   const noteOpen=$('#sheet-note').classList.contains('open');
   const ivBack=($('#sheet-iv').classList.contains('open')&&ivFromList)||$('#sheet-space').classList.contains('open'); ivOpen=null;
   $('#sp-frame').src='about:blank';
-  closeSheets(); if(noteOpen){ $('#sheet-notes').classList.add('open'); renderNotes(); }
+  closeSheets(); if(noteOpen) renderNotes();
   if(ivBack) openSheet('#sheet-ivs');
 });
 
@@ -1229,7 +1250,7 @@ function startSaver(){
 }
 function stopSaver(){saver.classList.remove('on');clearInterval(saverCycle);}
 saver.onclick=()=>{stopSaver();resetIdle();};
-$('#open-saver').onclick=startSaver;
+$('#open-saver').onclick=()=>{closeSheets();startSaver();};
 function resetIdle(){clearTimeout(idle);idle=setTimeout(()=>{if(!mainLive&&!document.querySelector('.sheet.open'))startSaver();},45000);}
 ['click','touchstart','keydown'].forEach(e=>document.addEventListener(e,resetIdle,{passive:true}));
 
@@ -1286,11 +1307,16 @@ function lockRecord(){
   if(intOn){showToast('Stop the interview first');return;}
   lkLive=true;pendingFix=fixNow();lock.classList.add('rec');lkStatus.textContent='listening, tap to stop';
   lkRec=recognize({
+    onLong:(blob,began)=>{lkLive=false;lock.classList.remove('rec');lkStatus.textContent='a conversation: writing it up...';
+      ivUploadWeb(blob,began).then(ok=>{lkStatus.textContent=ok?'written up, it is in the app':'could not send it';if(ok)hideLock();});},
     onLive:t=>{lkStatus.textContent=t;lock.classList.remove('rec');lock.classList.add('busy');},
     onEnd:async(t,err)=>{
       lkLive=false;lock.classList.remove('rec');
       if(err||!t){lock.classList.remove('busy');
         lkStatus.textContent=err==='locked'?'app key missing':err==='transcribe'?'could not transcribe, tap to try again':err?'microphone blocked':'heard nothing, tap to try again';return;}
+      if(FOR_CLAUDE.test(t)){lock.classList.remove('busy');
+        try{const a=await askClaudeDirect(t.replace(FOR_CLAUDE,'').trim()||t);lkStatus.textContent=a.kind==='app'?'sent to Claude, a preview will come to approve':'sent to Claude';}
+        catch{lkStatus.textContent='could not reach Claude, tap to try again';}return;}
       lkStatus.textContent='adding...';
       let arr=null;
       try{arr=parseJSON(await ask([{role:'system',content:TASKS_SYS},{role:'user',content:t}]));}catch{}
@@ -1564,6 +1590,16 @@ async function spCode(sp,btn){
   if(btn)btn.disabled=false;
 }
 
+// A long recording made with the button (not the phone's interview recorder) goes up as it is.
+async function ivUploadWeb(blob,ts){
+  const id='interview-'+new Date(ts).toISOString().slice(0,16).replace(/[:T]/g,'-')+'-web',name=id+'.m4a';
+  IVS[id]={...(IVS[id]||{}),id,status:'working',since:Date.now(),created:ts};LS.set('ob-ivs',IVS);
+  try{const r=await fetch('/api/interview/process?id='+encodeURIComponent(id)+'&ts='+ts+'&mime='+encodeURIComponent(blob.type||'audio/webm'),
+      {method:'POST',headers:{...obHeaders(),'Content-Type':blob.type||'audio/webm'},body:blob});
+    const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||r.status);
+    IVS[id]={...IVS[id],...d};LS.set('ob-ivs',IVS);openIv(name,false);return true;}
+  catch(e){IVS[id]={...IVS[id],status:'error'};LS.set('ob-ivs',IVS);showToast('Could not send the recording, saved it to your downloads');
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=id+(/mp4/.test(blob.type)?'.m4a':'.webm');a.click();return false;}}
 function ivProcess(name,ts,quiet){
   if(!(NATIVE&&NATIVE.processInterview)){if(!quiet)showToast('Update the app to process interviews');return;}
   const id=ivId(name); IVS[id]={...(IVS[id]||{}),status:'working',since:Date.now()}; LS.set('ob-ivs',IVS);
@@ -1584,6 +1620,13 @@ function seeAsks(ids){SEEN=[...new Set([...SEEN,...ids])].slice(-200);LS.set('ob
 function renderClaude(){
   const box=$('#claude-strip'); if(!box)return;
   const pend=ASKS.filter(a=>a.status!=='done'), fresh=ASKS.filter(a=>a.status==='done'&&!SEEN.includes(a.id));
+  // A change to the app waiting for Approve comes before anything else.
+  const wait=ASKS.find(a=>a.preview&&a.ship==='waiting');
+  if(wait){box.innerHTML=`<div class="cl-strip"><span class="cl-dot done"></span><div class="cl-text"><div class="iv-tag">Claude made a change to the app</div><div class="cl-ans">${escapeHtml(wait.answer||wait.text||'')}</div>
+      <div class="iv-row" style="margin-top:8px;flex-wrap:wrap"><a class="tbtn" href="${escapeHtml(wait.preview)}" target="_blank" rel="noopener">Try the preview</a><button class="tbtn" id="cl-ok">Approve, put it live</button><button class="tbtn" id="cl-no">Not this</button></div></div></div>`;
+    const go=async no=>{try{const r=await fetch('/api/interview/approve',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:wait.id,no})});if(!r.ok)throw 0;
+      wait.ship=no?'declined':'approved';LS.set('ob-asks',ASKS);renderClaude();showToast(no?'Left as it is':'Going live within 5 minutes');}catch{showToast('Could not reach the server');}};
+    $('#cl-ok').onclick=()=>go(false);$('#cl-no').onclick=()=>go(true);return;}
   const a=fresh[0]||pend[0]; if(!a){box.innerHTML='';return;}
   const n=fresh.length?fresh.length:pend.length, done=a.status==='done';
   const tag=done?`Claude answered${n>1?' . '+n+' new':''}`:`Claude is working${n>1?' on '+n:''}`;
@@ -1614,6 +1657,7 @@ $('#open-today').onclick=()=>openToday();
 $('#lk-set').onclick=()=>{hideLock();openSheet('#sheet-settings');};
 $('#lk-phone').onclick=()=>{if(NATIVE)NATIVE.closeLock();else hideLock();};
 $('#open-lock').onclick=showLock;
+$('#set-lockview').onclick=()=>{closeSheets();showLock();};
 window.obShowLock=showLock;
 window.obHideLock=hideLock;
 window.obLockRecord=()=>{showLock();if(!lkLive)lockRecord();};
