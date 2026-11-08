@@ -75,8 +75,8 @@
   .pill.alt{background:#F5F5F5;border:1px solid #D4D4D4}
   .pill:active{transform:scale(.96)}
   .hint{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:#777;text-align:center;letter-spacing:.4px;max-width:340px}
-  .lk-nav{display:flex;gap:8px;align-self:flex-start}
-  .lk-nav .lk-int{min-height:44px;padding:0 14px}
+  .lk-nav{display:flex;gap:8px;align-self:center}
+  .lk-ico{width:44px;height:44px;border:1px solid rgba(255,255,255,.3);background:transparent;color:#FFFFFF;display:flex;align-items:center;justify-content:center;cursor:pointer}
   .td-item{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--cream-2)}
   .td-time{font:600 15px "IBM Plex Mono",monospace;min-width:64px}
   .td-main{flex:1;min-width:0}
@@ -189,8 +189,6 @@
   .lock.busy .lk-orb{opacity:.6}
   @keyframes lkpulse{0%,100%{box-shadow:0 0 0 0 rgba(230,255,0,.5)}50%{box-shadow:0 0 0 18px rgba(230,255,0,0)}}
   .lk-int{width:64px;height:64px;border:1px solid rgba(255,255,255,.3);background:transparent;color:#FFFFFF;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase}
-  #lk-int{visibility:hidden}
-  .lock.int-armed #lk-int,.lock.interview #lk-int{visibility:visible}
   .chk{display:flex;gap:10px;align-items:center;font-size:15px;margin:4px 0 16px;cursor:pointer}
   .chk input{width:20px;height:20px;accent-color:var(--ink)}
   .upd{display:block;text-align:center;margin:28px 0 4px;padding:12px;font-family:'IBM Plex Mono';font-size:11px;letter-spacing:1px;color:var(--muted);text-decoration:none;opacity:.6}
@@ -232,9 +230,6 @@
   .cl-x{background:none;border:0;font-size:20px;line-height:1;color:var(--muted);cursor:pointer;min-width:32px;min-height:32px}
   .iv-tag{font-family:'IBM Plex Mono';font-size:10.5px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase}
   .sec-lbl{font-family:'IBM Plex Mono';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
-  .lk-int-time{display:none;font-size:13px;letter-spacing:0}
-  .lock.interview #lk-int{border-color:var(--fix);background:var(--fix)}
-  .lock.interview .lk-int-time{display:block}
   .lock.interview .lk-int-lbl{display:none}
   .lk-close:focus-visible,.lk-tick:focus-visible,.lk-orb:focus-visible,.lk-int:focus-visible{outline:2px solid var(--spark);outline-offset:3px}
   @media (prefers-reduced-motion:reduce){.lock.rec .lk-orb{animation:none;outline:3px solid #FFFFFF;outline-offset:4px}.lk-item{transition:none}}
@@ -406,17 +401,15 @@
 <div class="lock" id="lock" role="dialog" aria-label="Lock screen tasks">
   <div class="lk-top">
     <div><div class="lk-time" id="lk-time"></div><div class="lk-date" id="lk-date"></div></div>
-    <div class="lk-nav"><button class="lk-int" id="lk-app">Open app</button><button class="lk-int" id="lk-set">Settings</button><button class="lk-int" id="lk-today">Today</button></div>
+    <div class="lk-nav"><button class="lk-ico" id="lk-app" aria-label="Open the app" title="Open the app"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button><button class="lk-ico" id="lk-set" aria-label="Settings" title="Settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button></div>
   </div>
   <div id="alarms-lock" class="alarms"></div>
   <div class="lk-head"><span>To do</span><span id="lk-count"></span></div>
   <div class="lk-list" id="lk-list"></div>
   <div class="lk-foot">
-    <div class="lk-status" id="lk-status" aria-live="polite">tap to add a task</div>
+    <div class="lk-status" id="lk-status" aria-live="polite">tap to speak, tap again to stop</div>
     <div class="lk-row">
-      <button class="lk-int lk-phone" id="lk-phone" aria-label="Open phone"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V7a4 4 0 0 1 7.6-1.7"/></svg><span>Open phone</span></button>
       <button class="lk-orb" id="lk-orb" aria-label="Record a task"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
-      <button class="lk-int" id="lk-int" aria-label="Record an interview, audio only"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" fill="currentColor"/></svg><span class="lk-int-lbl">Interview</span><span class="lk-int-time">0:00</span></button>
     </div>
   </div>
 </div>
@@ -1257,7 +1250,7 @@ function resetIdle(){clearTimeout(idle);idle=setTimeout(()=>{if(!mainLive&&!docu
 /* Lock screen view. The One Button phone app (window.OBNative) shows it over the Android
  * lock screen; in a browser it opens from the bar or at ?lock=1. Tasks only, plus an
  * audio-only interview recorder that never transcribes. */
-const lock=$('#lock'), lkList=$('#lk-list'), lkStatus=$('#lk-status'), lkInt=$('#lk-int');
+const lock=$('#lock'), lkList=$('#lk-list'), lkStatus=$('#lk-status');
 const NATIVE=window.OBNative||null;
 const ICON_TICK='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 let lkClockT=null;
@@ -1275,18 +1268,25 @@ function renderLock(){
   const open=LS.get('ob-lockopen',{});
   // First the daily rhythm, then whatever belongs to the place the phone is at, then the kinds.
   const here=HERE?items.filter(n=>!n.routine&&placeOf(n)&&placeOf(n).id===HERE.id):[];
-  const firsts=new Set([...items.filter(n=>n.routine),...here]);
-  const GROUPS={rhythm:{label:'My rhythm',c:'var(--spark)',items:items.filter(n=>n.routine)},here:{label:HERE?'Here: '+HERE.name:'',c:'#1A1A1A',items:here}};
-  for(const key of ['rhythm','here','buy','fix','check','do']){
+  // Today first: what has a time today, in order, with the day's calendar events.
+  const tday=dayKey(Date.now()),dueToday=items.filter(n=>!n.routine&&dueAt(n)&&dayKey(dueAt(n))===tday).sort((a,b)=>dueAt(a)-dueAt(b));
+  const evToday=EVENTS.filter(e=>dayKey(e.begin)===tday&&(e.allDay||e.end>Date.now()));
+  const firsts=new Set([...items.filter(n=>n.routine),...here,...dueToday]);
+  const GROUPS={today:{label:'Today',c:'#FFFFFF',items:dueToday,events:evToday},rhythm:{label:'My rhythm',c:'var(--spark)',items:items.filter(n=>n.routine)},here:{label:HERE?'Here: '+HERE.name:'',c:'#1A1A1A',items:here}};
+  for(const key of ['today','rhythm','here','buy','fix','check','do']){
     let group=GROUPS[key]?GROUPS[key].items:items.filter(n=>!firsts.has(n)&&(CAT[n.cat]?n.cat:'do')===key);if(key==='buy')group=group.slice().sort((a,b)=>(shopOf(a).shop||'~').localeCompare(shopOf(b).shop||'~'));
-    if(!group.length) continue;
+    const evs=key==='today'?evToday:[];
+    if(!group.length&&!evs.length) continue;
     const cat=GROUPS[key]||CAT[key], isOpen=key in open?!!open[key]:!!GROUPS[key];
     const head=document.createElement('button');
     head.className='lk-group'+(isOpen?' open':'');head.setAttribute('aria-expanded',isOpen);
-    head.innerHTML=`<span class="ndot" style="background:${cat.c}"></span><span class="lk-gname">${cat.label}</span><span class="lk-gcount">${group.length}</span><svg class="lk-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
+    head.innerHTML=`<span class="ndot" style="background:${cat.c}"></span><span class="lk-gname">${cat.label}</span><span class="lk-gcount">${group.length+evs.length}</span><svg class="lk-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
     head.onclick=()=>{open[key]=!isOpen;LS.set('ob-lockopen',open);renderLock();};
     lkList.appendChild(head);
     if(!isOpen) continue;
+    for(const e of evs){const row=document.createElement('div');row.className='lk-item';
+      row.innerHTML=`<div class="lk-text">${escapeHtml(e.title)}<div style="font-size:13px;opacity:.75;margin-top:2px">${e.allDay?'all day':new Date(e.begin).toTimeString().slice(0,5)}${e.where?' . '+escapeHtml(e.where):''}</div></div>`;
+      lkList.appendChild(row);}
     for(const n of group){
       const row=document.createElement('div');row.className='lk-item';
       row.innerHTML=`<div class="lk-text">${escapeHtml(n.text)}${(whenOf(n)||(n.cat==='buy'&&shopOf(n).shop))?`<div style="font-size:13px;opacity:.75;margin-top:2px">${whenOf(n)||escapeHtml(shopOf(n).shop)}</div>`:''}</div><button class="lk-tick" aria-label="Mark done">${ICON_TICK}</button>`;
@@ -1295,8 +1295,7 @@ function renderLock(){
     }
   }
 }
-function showLock(){stopSaver();closeSheets();lock.classList.add('on');lockClock();
-  if(!intOn) lock.classList.remove('int-armed'); // the recorder hides again each time
+function showLock(){stopSaver();closeSheets();lock.classList.add('on');lockClock();loadEvents();
   clearInterval(lkClockT);lkClockT=setInterval(lockClock,15000);revive();renderLock();}
 function hideLock(){lock.classList.remove('on');clearInterval(lkClockT);}
 
@@ -1310,10 +1309,17 @@ function lockRecord(){
     onLong:(blob,began)=>{lkLive=false;lock.classList.remove('rec');lkStatus.textContent='a conversation: writing it up...';
       ivUploadWeb(blob,began).then(ok=>{lkStatus.textContent=ok?'written up, it is in the app':'could not send it';if(ok)hideLock();});},
     onLive:t=>{lkStatus.textContent=t;lock.classList.remove('rec');lock.classList.add('busy');},
-    onEnd:async(t,err)=>{
+    onEnd:(t,err)=>{
       lkLive=false;lock.classList.remove('rec');
       if(err||!t){lock.classList.remove('busy');
         lkStatus.textContent=err==='locked'?'app key missing':err==='transcribe'?'could not transcribe, tap to try again':err?'microphone blocked':'heard nothing, tap to try again';return;}
+      lockText(t);
+    }
+  });
+}
+// Words said on the lock screen: to Claude, or onto the list as tasks.
+async function lockText(t){
+      lock.classList.add('busy');
       if(FOR_CLAUDE.test(t)){lock.classList.remove('busy');
         try{const a=await askClaudeDirect(t.replace(FOR_CLAUDE,'').trim()||t);lkStatus.textContent=a.kind==='app'?'sent to Claude, a preview will come to approve':'sent to Claude';}
         catch{lkStatus.textContent='could not reach Claude, tap to try again';}return;}
@@ -1326,47 +1332,33 @@ function lockRecord(){
       arr.slice().reverse().forEach((x,i)=>{const t={id:now+i,text:x.text,cat:CAT[x.category]?x.category:'do',done:false,ts:now,subs:[],due:x.due||'',place:x.place||''};const ev=Number(x.every)||0;if(t.cat==='buy'&&x.aisle&&AISLES.some(([a])=>a===x.aisle))t.aisle=x.aisle;if(ev){t.every=ev;t.everyBy='guess';}if(absorb(t))return;notes.unshift(t);noteWhere(now+i,'said',pendingFix);});
       save();renderNotes();lock.classList.remove('busy');
       lkStatus.textContent=arr.length?'added '+arr.length+(arr.length>1?' tasks':' task'):'no task heard, tap to try again';
-    }
-  });
 }
 
 let intOn=false, intStart=0, intT=null, intWeb=null;
 function intTick(){const s=Math.floor((Date.now()-intStart)/1000);
-  lkInt.querySelector('.lk-int-time').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
-function intUI(on){intOn=on;lock.classList.toggle('interview',on);clearInterval(intT);
-  if(on){intTick();intT=setInterval(intTick,1000);lkStatus.textContent='recording interview, audio only';}}
+  lkStatus.textContent='listening '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0')+(s>=LONG_S?', a conversation':'')+', tap to stop';}
+function intUI(on){intOn=on;lock.classList.toggle('rec',on);clearInterval(intT);
+  if(on){intTick();intT=setInterval(intTick,1000);}}
 // The phone app reports its recorder state here: 'on' | 'saved' | 'error'.
 window.obInterview=(state,startedAt,info)=>{
   if(state==='on'){intStart=startedAt||Date.now();intUI(true);return;}
-  intUI(false);
-  lkStatus.textContent=state==='saved'?'interview saved':'could not record: '+(info||'unknown');
-  if(state==='saved'&&info){ivProcess(info,Date.now(),true);openIv(info,false);}
+  const short=Date.now()-intStart<LONG_S*1000;intUI(false);
+  if(state!=='saved'||!info){lkStatus.textContent='could not record: '+(info||'unknown');return;}
+  if(short&&NATIVE.readInterview){nativeShort(info);return;}
+  lkStatus.textContent='a conversation: writing it up...';ivProcess(info,Date.now(),true);openIv(info,false);
 };
-function interviewToggle(){
-  if(lkLive){showToast('Finish the task first');return;}
-  if(NATIVE){intOn?NATIVE.stopInterview():NATIVE.startInterview();return;}
-  // Browser: record here, then hand back a file.
-  if(intOn){try{intWeb.stop()}catch{};return;}
-  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
-    const mime=pickMime(), chunks=[];
-    intWeb=mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream);
-    intWeb.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
-    intWeb.onstop=()=>{stream.getTracks().forEach(t=>t.stop());intUI(false);
-      const blob=new Blob(chunks,{type:intWeb.mimeType||'audio/webm'}), ext=/mp4/.test(blob.type)?'m4a':'webm';
-      const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-      a.download='interview-'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.'+ext;a.click();
-      lkStatus.textContent='interview saved to your downloads';};
-    intWeb.start(1000);intStart=Date.now();intUI(true);
-  }).catch(()=>{lkStatus.textContent='microphone blocked';});
-}
+// A short recording from the phone's recorder becomes tasks, then the audio is deleted.
+async function nativeShort(name){const id=ivId(name);IVS[id]={status:'task'};LS.set('ob-ivs',IVS);
+  lock.classList.add('busy');lkStatus.textContent='transcribing...';
+  let t='';try{const r=await fetch('/api/transcribe',{method:'POST',headers:obHeaders(),body:JSON.stringify({audio:NATIVE.readInterview(name),mimeType:'audio/mp4'})});
+    if(r.ok)t=((await r.json()).text||'').trim();}catch{}
+  if(!t){lock.classList.remove('busy');delete IVS[id];LS.set('ob-ivs',IVS);lkStatus.textContent='could not transcribe; the recording is kept in the app';return;}
+  NATIVE.deleteInterview(name);delete IVS[id];LS.set('ob-ivs',IVS);lockText(t);}
 
-// One tap records a task. Three quick taps reveal the hidden interview recorder.
-let lkTaps=0, lkTapT=null;
+// One button: tap to speak, tap to stop. Short is tasks, long is a conversation written up.
 $('#lk-orb').onclick=()=>{
-  if(lkLive){lockRecord();return;}
-  lkTaps++;clearTimeout(lkTapT);
-  if(lkTaps>=3){lkTaps=0;lock.classList.add('int-armed');return;}
-  lkTapT=setTimeout(()=>{const n=lkTaps;lkTaps=0;if(n===1)lockRecord();},350);
+  if(NATIVE&&NATIVE.readInterview&&!lkLive){if(lock.classList.contains('busy'))return;intOn?NATIVE.stopInterview():NATIVE.startInterview();return;}
+  lockRecord();
 };
 
 /* Interviews (stage 7). Nothing leaves the phone until Jay taps Share or Process. A processed
@@ -1648,14 +1640,11 @@ window.obIvDone=(name,code,text)=>{
   LS.set('ob-ivs',IVS); renderInterviews(); if(ivOpen===name)renderIv();
   if(code===200) showToast('Interview note ready');
 };
-lkInt.onclick=interviewToggle;
 // On the phone, the app asks for fingerprint or PIN and hides this view once unlocked.
 // Straight into the full app (projects, lists, settings) from the lock screen.
 $('#lk-app').onclick=()=>{hideLock();};
-$('#lk-today').onclick=()=>openToday();
 $('#open-today').onclick=()=>openToday();
 $('#lk-set').onclick=()=>{hideLock();openSheet('#sheet-settings');};
-$('#lk-phone').onclick=()=>{if(NATIVE)NATIVE.closeLock();else hideLock();};
 $('#open-lock').onclick=showLock;
 $('#set-lockview').onclick=()=>{closeSheets();showLock();};
 window.obShowLock=showLock;
