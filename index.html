@@ -1118,12 +1118,31 @@ async function ivRefresh(){
 function openIv(name,fromList){ivOpen=name;ivFromList=fromList;openSheet('#sheet-iv');renderIv();ivRefresh();
   clearInterval(ivTimer);ivTimer=setInterval(()=>{if(!ivOpen){clearInterval(ivTimer);return;}if(!document.hidden)ivRefresh();},20000);}
 
+let ivWithOffer=[];
+async function ivSetWith(id,people){
+  try{const r=await fetch('/api/interview/with',{method:'POST',headers:obHeaders(),body:JSON.stringify({id,people})});
+    if(!r.ok)throw 0;IVS[id]={...(IVS[id]||{}),people};LS.set('ob-ivs',IVS);renderIv();renderInterviews();
+    showToast(people.length?'Filed with '+people.join(', ')+'; their space updates within five minutes':'Marked as just you');
+  }catch{showToast('Could not save that, try again');}}
 function renderIv(){
   const name=ivOpen; if(!name)return;
   const id=ivId(name), s=IVS[id]||{}, f=ivFiles().find(x=>x.name===name)||{ts:Date.now(),size:0}, b=$('#iv-body');
   $('#iv-title').textContent=s.title||'Interview';
   let h=`<p class="iv-meta">${ivWhen(f.ts)} . ${(f.size/1048576).toFixed(1)} MB${s.people&&s.people.length?' . with '+escapeHtml(s.people.join(', ')):''}</p>
     <div class="iv-row"><button class="save" id="iv-share">Share recording with them</button></div>`;
+  // Who it was with: the note step only names people it hears in the conversation, so this is
+  // where Jay confirms or corrects it. Recent partners come first; a change refiles it on the laptop.
+  if(s.status==='done'){
+    const mine=(s.people||[]).map(p=>p.toLowerCase()), seen=new Set(), recent=[];
+    Object.values(IVS).sort((a,b)=>(b.created||0)-(a.created||0)).forEach(v=>(v.people||[]).forEach(p=>{const k=p.toLowerCase();if(!seen.has(k)){seen.add(k);recent.push(p);}}));
+    const offer=[...(s.people||[]),...recent.filter(p=>!mine.includes(p.toLowerCase()))].slice(0,6);
+    h+=`<div class="iv-h">${(s.people||[]).length?'With':'Who was this with?'}</div><div class="iv-row" style="flex-wrap:wrap;gap:6px">
+      ${offer.map((p,i)=>`<button class="chip${mine.includes(p.toLowerCase())?' on':''}" data-with="${i}">${escapeHtml(p)}</button>`).join('')}
+      <button class="chip${mine.length?'':' on'}" data-with="me">Just me</button>
+      <input class="nd-when" id="iv-with-new" placeholder="Someone else" aria-label="Someone else" style="flex:1;min-width:120px"></div>
+      ${(s.about||[]).length?`<p class="note">Talked about: ${escapeHtml(s.about.join(', '))}</p>`:''}`;
+    ivWithOffer=offer;
+  }
   // One shared space per person heard in the recording, made on the first tap if it is new.
   if(s.status==='done'&&(s.people||[]).length){
     h+=`<div class="iv-h">Shared spaces</div>`;
@@ -1166,6 +1185,11 @@ function renderIv(){
   $('#iv-share').onclick=()=>NATIVE&&NATIVE.shareInterview(name);
   b.querySelectorAll('[data-spopen]').forEach(x=>x.onclick=()=>spOpen(spOf(s.people[+x.dataset.spopen])));
   b.querySelectorAll('[data-spsend]').forEach(x=>x.onclick=()=>spSendPerson(s.people[+x.dataset.spsend],id,x));
+  b.querySelectorAll('[data-with]').forEach(x=>x.onclick=()=>{const v=x.dataset.with,cur=s.people||[];
+    if(v==='me')return ivSetWith(id,[]);
+    const p=ivWithOffer[+v],on=cur.some(c=>c.toLowerCase()===p.toLowerCase());
+    ivSetWith(id,on?cur.filter(c=>c.toLowerCase()!==p.toLowerCase()):[...cur,p]);});
+  const wn=$('#iv-with-new');if(wn)wn.onchange=()=>{const p=wn.value.trim().replace(/^./,c=>c.toUpperCase());if(p)ivSetWith(id,[...(s.people||[]),p]);};
   const proc=$('#iv-proc'); if(proc) proc.onclick=()=>ivProcess(name,f.ts);
   const ss=$('#iv-sharesum'); if(ss) ss.onclick=()=>ivShareText(s.title+'\n\n'+s.summary+((s.points||[]).length?'\n\n'+s.points.map(p=>'- '+p).join('\n'):''));
   const tr=$('#iv-tr'); if(tr) tr.onclick=async()=>{
