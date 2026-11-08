@@ -734,8 +734,8 @@ function renderShop(n){const box=$('#nd-shop');if(n.cat!=='buy'){box.innerHTML='
 async function findSource(n,refresh){const out=$('#nd-src');out.innerHTML='<div class="nd-status">Searching Dahab sources, this can take half a minute…</div>';
   try{const r=await fetch('/api/shop/source',{method:'POST',headers:obHeaders(),body:JSON.stringify({item:n.text,group:aisleOf(n),refresh})});
     const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);
-    const link=u=>/^https:\/\//.test(u||'')?` <a href="${escapeHtml(u)}" target="_blank" rel="noopener">source</a>`:'';
-    const one=(p,b)=>p&&p.name?`<div style="margin:8px 0">${b?'<b>':''}${escapeHtml(p.name)}${b?'</b>':''}${p.where?' . '+escapeHtml(p.where):''}<div class="nmeta">${escapeHtml(p.why||'')}${p.how?' '+escapeHtml(p.how):''}${link(p.link)}</div></div>`:'';
+    const link=p=>!/^https:\/\//.test(p.link||'')?' (no link found)':p.linkOk===false?' (its web link did not open: ask locally)':` <a href="${escapeHtml(p.link)}" target="_blank" rel="noopener">source</a>`;
+    const one=(p,b)=>p&&p.name?`<div style="margin:8px 0">${b?'<b>':''}${escapeHtml(p.name)}${b?'</b>':''}${p.where?' . '+escapeHtml(p.where):''}<div class="nmeta">${escapeHtml(p.why||'')}${p.how?' '+escapeHtml(p.how):''}${link(p)}</div></div>`:'';
     out.innerHTML=`<div class="iv-h">Most ethical local source</div>${one(d.best,true)||'<div class="nmeta">Nothing specific found for Dahab.</div>'}
       ${(d.others||[]).length?'<div class="nmeta" style="margin-top:8px">Also</div>'+(d.others||[]).map(p=>one(p)).join(''):''}
       ${(d.ask||[]).length?'<div class="nmeta" style="margin-top:8px">Ask the seller</div><ul style="margin:4px 0;padding-left:18px">'+d.ask.map(q=>`<li>${escapeHtml(q)}</li>`).join('')+'</ul>':''}
