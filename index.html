@@ -1136,7 +1136,7 @@ function renderIv(){
     const mine=(s.people||[]).map(p=>p.toLowerCase()), seen=new Set(), recent=[];
     Object.values(IVS).sort((a,b)=>(b.created||0)-(a.created||0)).forEach(v=>(v.people||[]).forEach(p=>{const k=p.toLowerCase();if(!seen.has(k)){seen.add(k);recent.push(p);}}));
     const offer=[...(s.people||[]),...recent.filter(p=>!mine.includes(p.toLowerCase()))].slice(0,6);
-    h+=`<div class="iv-h">${(s.people||[]).length?'With':'Who was this with?'}</div><div class="iv-row" style="flex-wrap:wrap;gap:6px">
+    h+=`<div class="iv-h">${(s.people||[]).length?'With'+(s.peopleBy==='voice'?' (recognised by voice)':''):s.unknownVoices?'A voice I do not know yet: who is this?':'Who was this with?'}</div>${s.unknownVoices&&!(s.people||[]).length?'<p class="note">Tag them once and their voice is recognised from then on.</p>':''}<div class="iv-row" style="flex-wrap:wrap;gap:6px">
       ${offer.map((p,i)=>`<button class="chip${mine.includes(p.toLowerCase())?' on':''}" data-with="${i}">${escapeHtml(p)}</button>`).join('')}
       <button class="chip${mine.length?'':' on'}" data-with="me">Just me</button>
       <input class="nd-when" id="iv-with-new" placeholder="Someone else" aria-label="Someone else" style="flex:1;min-width:120px"></div>
