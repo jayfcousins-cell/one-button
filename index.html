@@ -633,13 +633,22 @@ Return ONLY raw JSON, no markdown:
 Rules: "remind me", "I noticed", "X is broken", "buy Y", "check Z" are captures. "tell/message/ping/text/whatsapp/dm someone" -> action message. "call/phone/ring someone" -> action call. "book/schedule/add ... to calendar" -> action calendar. Use channel "auto" unless the user names one. Keep text tight. Today is ${new Date().toISOString()}.`;
 
 // "Claude, ..." or "for Claude ..." goes to Claude on the laptop rather than onto the list.
-const FOR_CLAUDE=/^s*(hey |ok |okay )?(claude|agent)[,:. ]*|^s*(for|ask|tell) (claude|an agent|the agent)(s+to)?[,:. ]*/i;
-async function askClaudeDirect(text){
-  const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({text})});
+const FOR_CLAUDE=/^\s*(hey |ok |okay )?(claude|agent)\b[,:. ]*|^\s*(for|ask|tell) (claude|an agent|the agent)\b(\s+to\b)?[,:. ]*/i;
+// "Make this change to the One Button app ..." starts the build loop on One Button: a plan comes
+// back to approve, then a preview to try. No need to open the project first.
+const APP_CHANGE=t=>/\b(one ?button|the app|this app)\b/i.test(t)&&/\b(change|make|add|remove|take out|move|fix|put|show|hide|bigger|smaller|should|want|improve|build)\b/i.test(t);
+async function askClaudeDirect(text,extra={}){
+  const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({text,...extra})});
   if(!r.ok)throw new Error('ask '+r.status);const a=await r.json();ASKS=[a,...ASKS];LS.set('ob-asks',ASKS);renderClaude();return a;}
+// Words for Claude, from either button: a change to the app, or a request. Returns what to show, or '' if not for Claude.
+async function toClaude(t){
+  if(APP_CHANGE(t)){const p=PROJ.projects.find(isBuild);
+    try{await askClaudeDirect(t.replace(FOR_CLAUDE,'').trim()||t,{app:true,project:p?p.id:''});return 'change to the app sent: Claude will show you a plan first';}
+    catch{return 'could not reach Claude, tap to try again';}}
+  if(FOR_CLAUDE.test(t)){try{await askClaudeDirect(t.replace(FOR_CLAUDE,'').trim()||t);return 'sent to Claude';}catch{return 'could not reach Claude, tap to try again';}}
+  return '';}
 async function route(text){
-  if(FOR_CLAUDE.test(text)){try{const a=await askClaudeDirect(text.replace(FOR_CLAUDE,'').trim()||text);
-    mainLive||(statusEl.textContent=a.kind==='app'?'sent to Claude: it will show you a preview to approve':'sent to Claude');}catch{mainLive||(statusEl.textContent='could not reach Claude, tap to retry');}return;}
+  {const said=await toClaude(text);if(said){mainLive||(statusEl.textContent=said);return;}}
   orb.classList.add('busy'); hint.style.display='none';
   try{
     const out=parseJSON(await ask([{role:'system',content:SYS},{role:'user',content:text}])) || {kind:'answer',answer:'Sorry, did not get that.'};
@@ -1352,9 +1361,7 @@ function lockRecord(){
 // Words said on the lock screen: to Claude, or onto the list as tasks.
 async function lockText(t){
       lock.classList.add('busy');
-      if(FOR_CLAUDE.test(t)){lock.classList.remove('busy');
-        try{const a=await askClaudeDirect(t.replace(FOR_CLAUDE,'').trim()||t);lkSay(a.kind==='app'?'sent to Claude, a preview will come to approve':'sent to Claude');}
-        catch{lkSay('could not reach Claude, tap to try again');}return;}
+      {const said=await toClaude(t);if(said){lock.classList.remove('busy');lkSay(said);return;}}
       lkSay('adding...');
       let arr=null;
       try{arr=parseJSON(await ask([{role:'system',content:TASKS_SYS},{role:'user',content:t}]));}catch{}
