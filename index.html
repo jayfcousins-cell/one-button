@@ -881,24 +881,22 @@ function syncAlarms(){renderAlarms();const N=window.OBNative;if(!(N&&N.syncAlarm
 function ringingAt(n,now){const t=dueAt(n);if(!t||now>t+AL_GRACE)return 0;
   const gone=alarmTimes(n).map(a=>a.at).filter(at=>at<=now);const last=gone.length?Math.max(...gone):0;
   return last&&last>(n.alarmSeen||0)?last:0;}
-/* Shown under the button on the main screen and at the top of the lock screen list. */
+/* Only an alarm that is ringing shows (under the button and at the top of the lock screen list);
+ * the ones still to come stay out of sight and just go off. */
 function renderAlarms(){
   const now=Date.now(),rows=[];
   for(const n of notes){if(n.done||n.deleted)continue;const t=dueAt(n);if(!t)continue;
-    const ring=ringingAt(n,now),next=alarmTimes(n).map(a=>a.at).filter(at=>at>now).sort((x,y)=>x-y)[0];
-    if(ring||next)rows.push({n,t,ring,next});}
-  rows.sort((a,b)=>(!!b.ring-!!a.ring)||(a.t-b.t));
-  const hm=t=>new Date(t).toTimeString().slice(0,5);
+    const ring=ringingAt(n,now);
+    if(ring)rows.push({n,t,ring});}
+  rows.sort((a,b)=>a.t-b.t);
   for(const box of [$('#alarms-main'),$('#alarms-lock')]){if(!box)continue;
     box.innerHTML=rows.slice(0,4).map((r,i)=>{
-      if(!r.ring)return `<div class="al-row" data-al-open="${i}"><span class="al-t">${hm(r.next)}</span><span class="al-x">${escapeHtml(r.n.text)}<span class="al-due">${whenOf(r.n)}</span></span></div>`;
       const left=ladderOf(r.n).filter(m=>r.t-m*6e4>now);
       return `<div class="al-row al-ring" style="flex-wrap:wrap"><span class="al-t">${Math.max(0,Math.round((r.t-now)/6e4))}m</span>
         <span class="al-x">${escapeHtml(r.n.text)}<span class="al-due">${whenOf(r.n)}</span></span>
         <span style="display:flex;gap:6px;width:100%;flex-wrap:wrap"><span class="al-due" style="align-self:center">Remind me in</span>
         ${[10,20,30].map(m=>`<button class="tbtn" data-al-snz="${i}" data-m="${m}">${m} min</button>`).join('')}<button class="tbtn" data-al-done="${i}">Done</button></span>
         ${left.length?`<span class="al-due" style="width:100%">Still to come: ${left.map(m=>`<button class="tbtn" data-al-drop="${i}" data-m="${m}">${m} min before</button>`).join(' ')} (tap to drop)</span>`:''}</div>`;}).join('');
-    box.querySelectorAll('[data-al-open]').forEach(b=>b.onclick=()=>{openNote(rows[+b.dataset.alOpen].n.id);});
     box.querySelectorAll('[data-al-snz]').forEach(b=>b.onclick=()=>{const r=rows[+b.dataset.alSnz];r.n.alarmSeen=Date.now();r.n.snooze=Date.now()+(+b.dataset.m)*6e4;save();showToast('Reminding you in '+b.dataset.m+' minutes');});
     box.querySelectorAll('[data-al-drop]').forEach(b=>b.onclick=()=>{const r=rows[+b.dataset.alDrop];r.n.remind=ladderOf(r.n).filter(m=>m!==+b.dataset.m);save();});
     box.querySelectorAll('[data-al-done]').forEach(b=>b.onclick=()=>{const r=rows[+b.dataset.alDone];tick(r.n);noteWhere(r.n.id,'done',fixNow());save();renderNotes();});}
