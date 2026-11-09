@@ -636,7 +636,7 @@ Rules: "remind me", "I noticed", "X is broken", "buy Y", "check Z" are captures.
 const FOR_CLAUDE=/^\s*(hey |ok |okay )?(claude|agent)\b[,:. ]*|^\s*(for|ask|tell) (claude|an agent|the agent)\b(\s+to\b)?[,:. ]*/i;
 // "Make this change to the One Button app ..." starts the build loop on One Button: a plan comes
 // back to approve, then a preview to try. No need to open the project first.
-const APP_CHANGE=t=>/\b(one ?button|the app|this app)\b/i.test(t)&&/\b(change|make|add|remove|take out|move|fix|put|show|hide|bigger|smaller|should|want|improve|build)\b/i.test(t);
+const APP_CHANGE=t=>/\b((?:one|1)[ -]?button|the app|this app)\b/i.test(t)&&/\b(change|make|add|remove|take out|move|fix|put|show|hide|bigger|smaller|should|want|improve|build)\b/i.test(t);
 async function askClaudeDirect(text,extra={}){
   const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({text,...extra})});
   if(!r.ok)throw new Error('ask '+r.status);const a=await r.json();ASKS=[a,...ASKS];LS.set('ob-asks',ASKS);renderClaude();return a;}
@@ -1667,7 +1667,7 @@ function renderClaude(){
  * reads the app and shows a plan here; say go (or what to change); it builds a preview, showing
  * what it is doing as it goes; try the preview, comment on it by voice, or approve it to go live.
  * One Button is the first project built this way; other projects get answers, not builds, for now. */
-const isBuild=p=>!!p&&(p.build==='one-button'||p.seed==='one-button'||/^one ?button( app)?$/i.test(p.name||''));
+const isBuild=p=>!!p&&(p.build==='one-button'||p.seed==='one-button'||/^(?:one|1)[ -]?button( app)?$/i.test(p.name||''));
 const STAGE_LABEL={waiting:'Waiting for the laptop',picked:'Picked up',planning:'Making a plan',plan:'Plan ready for you',building:'Building',checking:'Checking',
   publishing:'Publishing the preview',preview:'Ready to try','going-live':'Going live',live:'Live',failed:'Stopped',done:'Answered',declined:'Left as it was'};
 const STEPS=['planning','plan','building','preview','live'],STEP_NAME={planning:'Plan',plan:'You',building:'Build',preview:'Try',live:'Live'};
@@ -1756,7 +1756,7 @@ function renderTriage(){const box=$('#proj-triage');if(!box)return;const q=triag
     <div class="nmeta">${escapeHtml([p.kind,p.stage,p.source==='conversation'&&p.fromTitle?'from '+p.fromTitle:''].filter(Boolean).join(' . '))}</div>
     ${p.about?`<p>${escapeHtml(p.about)}</p>`:''}${p.link?`<p><a href="${escapeHtml(p.link)}" target="_blank" rel="noopener">Open it</a></p>`:''}
     <div class="iv-row"><button class="tbtn" id="tr-phone">Steward, on my phone</button><button class="tbtn" id="tr-take">Steward</button><button class="tbtn" id="tr-later">Later</button><button class="tbtn" id="tr-no">Not mine</button></div></div>`;
-  const take=async(main,status)=>{const extra=/one ?button/i.test(p.name)||p.seed==='one-button'?{build:'one-button'}:{};
+  const take=async(main,status)=>{const extra=/(?:one|1)[ -]?button/i.test(p.name)||p.seed==='one-button'?{build:'one-button'}:{};
     await projSave({...p,...extra,status:status||(p.source==='garden'?p.status:'Idea'),main});renderProj();renderNotes();};
   $('#tr-phone').onclick=()=>take(true);$('#tr-take').onclick=()=>take(false);$('#tr-no').onclick=()=>take(false,'Dropped');
   $('#tr-later').onclick=()=>{const l=LS.get('ob-proj-later',[]).filter(x=>x!==p.name);l.push(p.name);LS.set('ob-proj-later',l);renderTriage();};}
