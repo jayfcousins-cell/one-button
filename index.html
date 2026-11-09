@@ -1383,6 +1383,8 @@ function showLock(){stopSaver();closeSheets();lock.classList.add('on');lockClock
 function hideLock(){lock.classList.remove('on');clearInterval(lkClockT);}
 
 let lkRec=null, lkLive=false;
+// Leaving the app ends a recording made in the page, so the microphone is never left on out of sight.
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)return;if(mainLive&&mainRec)mainRec.stop();if(lkLive&&lkRec)lkRec.stop();});
 const TASKS_SYS=`The user speaks to a to-do app from their phone's lock screen. Pull out every task they mention. Return ONLY a raw JSON array, no markdown: [{"text":"short clean task","category":"fix"|"check"|"buy"|"do","due":"ISO 8601 date-time if they gave a time or day, else empty","place":"a place they named (home, the market), else empty","aisle":"for buy only, one of: ${AISLES.map(a=>a[0]).join(' | ')}, else empty","every":"days between repeats if they say it repeats (every day 1, every week 7, every month 30) or it is plainly a routine chore, else 0"}]. One item per separate task. Keep their meaning and any time, place or person they name. Today is ${new Date().toString()}. If there is no task, return [].`;
 // Status from an earlier recording never covers one in progress.
 const lkSay=s=>{if(!lkLive&&!intOn)lkStatus.textContent=s;};
@@ -1424,7 +1426,8 @@ function intUI(on){intOn=on;lock.classList.toggle('rec',on);clearInterval(intT);
   if(on){intTick();intT=setInterval(intTick,1000);}}
 // The phone app reports its recorder state here: 'on' | 'saved' | 'error'.
 window.obInterview=(state,startedAt,info)=>{
-  if(state==='on'){intStart=startedAt||Date.now();intUI(true);return;}
+  // A recording running is always on screen, with its Stop, wherever the app was opened.
+  if(state==='on'){intStart=startedAt||Date.now();intUI(true);showLock();return;}
   const short=Date.now()-intStart<LONG_S*1000;intUI(false);
   if(state!=='saved'||!info){lkSay('could not record: '+(info||'unknown'));return;}
   if(short&&NATIVE.readInterview){nativeShort(info);return;}
