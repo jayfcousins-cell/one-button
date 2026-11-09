@@ -219,6 +219,21 @@
   .cele-say{font:700 22px "Inter Tight",sans-serif;margin:6px 0 18px}
   .cele-list{text-align:left;max-width:440px;margin:0 auto;width:100%}
   .cele-list div{padding:9px 0;border-bottom:1px solid var(--line);font-size:15px}
+  .bl-card{border:1px solid var(--line);padding:11px 12px;margin:0 0 12px;background:#fff}
+  .bl-text{font-weight:600;margin:2px 0 6px}
+  .bl-steps{display:flex;gap:4px;margin:6px 0}
+  .bl-step{flex:1;text-align:center;font:500 11px "IBM Plex Mono",monospace;padding:5px 0;border:1px solid var(--line);color:var(--muted)}
+  .bl-step.past{background:var(--line);color:var(--ink)}
+  .bl-step.now{background:var(--forest-2);border-color:var(--forest-2);color:var(--cream)}
+  .bl-log{font:400 12px/1.5 "IBM Plex Mono",monospace;color:var(--muted);margin:6px 0;max-height:5.5em;overflow:hidden}
+  .bl-more{background:none;border:0;padding:6px 0;min-height:44px;color:var(--forest-2);text-decoration:underline;cursor:pointer;font-size:13px}
+  .bl-plan{white-space:pre-wrap;line-height:1.6;margin:10px 0 14px}
+  .p1-speak{width:100%;min-height:56px;margin:0 0 6px;border:0;background:var(--forest-2);color:var(--cream);font:600 16px "Inter",sans-serif;cursor:pointer}
+  .tr-card{border:2px solid var(--forest-2);padding:14px;margin:0 0 18px;background:#fff}
+  .tr-name{font:700 19px "Inter Tight",sans-serif;margin:4px 0 2px}
+  .lk-proj{width:100%;background:none;border:0;color:inherit;text-align:left;cursor:pointer}
+  .pv-bar{position:fixed;left:0;right:0;bottom:0;z-index:90;background:#fff;border-top:2px solid var(--forest-2);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
+  .pv-what{font:600 13px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:1px}
   .cl-strip{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);padding:11px 12px;margin:0 0 14px;cursor:pointer}
   .cl-strip .cl-text{flex:1;min-width:0;font-size:14px;line-height:1.45}
   .cl-strip .cl-ans{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:var(--ink)}
@@ -263,6 +278,7 @@
     </div>
     <div id="alarms-main" class="alarms"></div>
     <section class="todo" id="todo" aria-label="To do">
+    <div id="build-strip"></div>
     <div id="claude-strip"></div>
     <div id="sp-strip"></div>
     <div class="cat-row" id="cat-filter">
@@ -380,7 +396,11 @@
 </div>
 <div class="sheet" id="sheet-proj">
   <div class="sheet-bar"><h2>Projects</h2><button class="sheet-x" data-close>&times;</button></div>
-  <div class="sheet-body" id="proj-list"></div>
+  <div class="sheet-body"><div id="proj-triage"></div><div id="proj-list"></div></div>
+</div>
+<div class="sheet" id="sheet-plan">
+  <div class="sheet-bar"><h2 id="pl-title">Claude's plan</h2><button class="sheet-x" data-close>&times;</button></div>
+  <div class="sheet-body" id="pl-body"></div>
 </div>
 <div class="sheet" id="sheet-p1">
   <div class="sheet-bar"><h2 id="p1-title">Project</h2><button class="sheet-x" data-close>&times;</button></div>
@@ -913,20 +933,25 @@ function renderProj(){const box=$('#proj-list');
     await projSave({...p,status:p.source==='claude'?'Exploring':p.source==='garden'?p.status:'Idea',main:false});renderProj();showToast('Now stewarding '+p.name);});
   box.querySelectorAll('[data-drop]').forEach(b=>b.onclick=async()=>{const [k,i]=b.dataset.drop.split(':'),p=pick(k)[+i];
     await projSave({...p,status:'Dropped',main:false});renderProj();});
+  renderTriage();
   $('#pj-new').onchange=async e=>{const name=e.target.value.trim();if(!name)return;await projSave({name,status:'Idea',source:'you',main:true});renderProj();};}
 let P1=null;
 function openProject(p){P1=p;openSheet('#sheet-p1');renderP1();}
 function renderP1(){const p=PROJ.projects.find(x=>x.id===P1.id)||P1;P1=p;$('#p1-title').textContent=p.name;
   const ts=tasksOf(p),open=ts.filter(n=>!n.done),done=ts.filter(n=>n.done);
-  const convs=(p.from||[]).map(id=>({id,s:IVS[id]})).filter(c=>c.s);
-  $('#p1-body').innerHTML=`<div>${PROJ.statuses.map(s=>`<button class="chip${s===p.status?' on':''}" data-st="${s}">${s}</button>`).join('')}</div>
+  const convs=(p.from||[]).map(id=>({id,s:IVS[id]})).filter(c=>c.s),pa=ASKS.filter(a=>a.project===p.id).slice(0,6);
+  $('#p1-body').innerHTML=`<button class="p1-speak" id="p1-speak">${isBuild(p)?'Speak a change to this build':'Speak to this project'}</button><div class="note" id="p1-status"></div>
+    ${pa.length?`<div class="iv-h">With Claude</div>${pa.map(askCard).join('')}`:''}
+    ${p.link?`<p><a href="${escapeHtml(p.link)}" target="_blank" rel="noopener">Open ${escapeHtml(p.name)}</a></p>`:''}
+    <div>${PROJ.statuses.map(s=>`<button class="chip${s===p.status?' on':''}" data-st="${s}">${s}</button>`).join('')}</div>
     <label class="iv-row" style="align-items:center;gap:8px;margin:10px 0"><input type="checkbox" id="p1-main" ${p.main?'checked':''} style="width:22px;height:22px"> On the main screen</label>
     ${p.about?`<p>${escapeHtml(p.about)}</p>`:''}
     <input class="nd-when" id="p1-kind" placeholder="Kind of work, e.g. Weave, Dahab, writing" value="${escapeHtml(p.kind||'')}" aria-label="Kind of work">
     <div class="iv-h">To do (${open.length})</div>${open.map((n,i)=>`<div class="note-item"><div class="ntext" data-pt="${i}">${escapeHtml(n.text)}<div class="nmeta">${whenOf(n)||CAT[n.cat].label}</div></div><button class="ndone" data-pd="${i}" title="done">&#10003;</button></div>`).join('')||'<p class="note">No tasks yet. Link one from its task screen.</p>'}
     ${done.length?`<p class="note">${done.length} done</p>`:''}
     ${convs.length?`<div class="iv-h">Conversations</div>${convs.map((c,i)=>`<div class="note-item"><div class="ntext" data-pc="${i}">${escapeHtml(c.s.title||c.id)}<div class="nmeta">${(c.s.people||[]).length?'with '+escapeHtml(c.s.people.join(', ')):''}</div></div></div>`).join('')}`:''}`;
-  const b=$('#p1-body');
+  const b=$('#p1-body');wireAskCards(b);
+  $('#p1-speak').onclick=()=>speakOnce($('#p1-status'),async t=>{try{const a=await speakToProject(p,t);$('#p1-status').textContent=a.kind==='app'?'Sent. Claude will show you a plan first.':'Sent to Claude.';}catch{$('#p1-status').textContent='Could not send it';}});
   b.querySelectorAll('[data-st]').forEach(x=>x.onclick=async()=>{await projSave({...p,status:x.dataset.st});renderP1();});
   $('#p1-main').onchange=e=>projSave({...p,main:e.target.checked});
   $('#p1-kind').onchange=e=>projSave({...p,kind:e.target.value.trim()});
@@ -1274,21 +1299,24 @@ function renderLock(){
   const tday=dayKey(Date.now()),dueToday=items.filter(n=>!n.routine&&dueAt(n)&&dayKey(dueAt(n))===tday).sort((a,b)=>dueAt(a)-dueAt(b));
   const evToday=EVENTS.filter(e=>dayKey(e.begin)===tday&&(e.allDay||e.end>Date.now()));
   const firsts=new Set([...items.filter(n=>n.routine),...here,...dueToday]);
-  const GROUPS={today:{label:'Today',c:'#FFFFFF',items:dueToday,events:evToday},rhythm:{label:'My rhythm',c:'var(--spark)',items:items.filter(n=>n.routine)},here:{label:HERE?'Here: '+HERE.name:'',c:'#1A1A1A',items:here}};
-  for(const key of ['today','rhythm','here','buy','fix','check','do']){
+  const GROUPS={projects:{label:'Projects',c:'var(--spark)',items:[]},today:{label:'Today',c:'#FFFFFF',items:dueToday,events:evToday},rhythm:{label:'My rhythm',c:'var(--spark)',items:items.filter(n=>n.routine)},here:{label:HERE?'Here: '+HERE.name:'',c:'#1A1A1A',items:here}};
+  for(const key of ['today','projects','rhythm','here','buy','fix','check','do']){
     let group=GROUPS[key]?GROUPS[key].items:items.filter(n=>!firsts.has(n)&&(CAT[n.cat]?n.cat:'do')===key);if(key==='buy')group=group.slice().sort((a,b)=>(shopOf(a).shop||'~').localeCompare(shopOf(b).shop||'~'));
-    const evs=key==='today'?evToday:[];
-    if(!group.length&&!evs.length) continue;
+    const evs=key==='today'?evToday:[],prs=key==='projects'?PROJ.projects.filter(p=>p.main&&projLive(p)):[];
+    if(!group.length&&!evs.length&&!prs.length) continue;
     const cat=GROUPS[key]||CAT[key], isOpen=key in open?!!open[key]:!!GROUPS[key];
     const head=document.createElement('button');
     head.className='lk-group'+(isOpen?' open':'');head.setAttribute('aria-expanded',isOpen);
-    head.innerHTML=`<span class="ndot" style="background:${cat.c}"></span><span class="lk-gname">${cat.label}</span><span class="lk-gcount">${group.length+evs.length}</span><svg class="lk-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
+    head.innerHTML=`<span class="ndot" style="background:${cat.c}"></span><span class="lk-gname">${cat.label}</span><span class="lk-gcount">${group.length+evs.length+prs.length}</span><svg class="lk-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
     head.onclick=()=>{open[key]=!isOpen;LS.set('ob-lockopen',open);renderLock();};
     lkList.appendChild(head);
     if(!isOpen) continue;
     for(const e of evs){const row=document.createElement('div');row.className='lk-item';
       row.innerHTML=`<div class="lk-text">${escapeHtml(e.title)}<div style="font-size:13px;opacity:.75;margin-top:2px">${e.allDay?'all day':new Date(e.begin).toTimeString().slice(0,5)}${e.where?' . '+escapeHtml(e.where):''}</div></div>`;
       lkList.appendChild(row);}
+    for(const p of prs){const row=document.createElement('button');row.className='lk-item lk-proj';const open=tasksOf(p).filter(n=>!n.done).length,b=ASKS.find(a=>a.project===p.id&&askActive(a));
+      row.innerHTML=`<div class="lk-text">${escapeHtml(p.name)}<div style="font-size:13px;opacity:.75;margin-top:2px">${escapeHtml(p.status)}${open?' . '+open+' to do':''}${b?' . '+escapeHtml(STAGE_LABEL[askStage(b)]):''}</div></div>`;
+      row.onclick=()=>{hideLock();openProject(p);};lkList.appendChild(row);}
     for(const n of group){
       const row=document.createElement('div');row.className='lk-item';
       row.innerHTML=`<div class="lk-text">${escapeHtml(n.text)}${(whenOf(n)||(n.cat==='buy'&&shopOf(n).shop))?`<div style="font-size:13px;opacity:.75;margin-top:2px">${whenOf(n)||escapeHtml(shopOf(n).shop)}</div>`:''}</div><button class="lk-tick" aria-label="Mark done">${ICON_TICK}</button>`;
@@ -1614,15 +1642,9 @@ function ivAuto(){
 let SEEN=LS.get('ob-asks-seen',[]);
 function seeAsks(ids){SEEN=[...new Set([...SEEN,...ids])].slice(-200);LS.set('ob-asks-seen',SEEN);renderClaude();}
 function renderClaude(){
+  renderBuilds();
   const box=$('#claude-strip'); if(!box)return;
-  const pend=ASKS.filter(a=>a.status!=='done'), fresh=ASKS.filter(a=>a.status==='done'&&!SEEN.includes(a.id));
-  // A change to the app waiting for Approve comes before anything else.
-  const wait=ASKS.find(a=>a.preview&&a.ship==='waiting');
-  if(wait){box.innerHTML=`<div class="cl-strip"><span class="cl-dot done"></span><div class="cl-text"><div class="iv-tag">Claude made a change to the app</div><div class="cl-ans">${escapeHtml(wait.answer||wait.text||'')}</div>
-      <div class="iv-row" style="margin-top:8px;flex-wrap:wrap"><a class="tbtn" href="${escapeHtml(wait.preview)}" target="_blank" rel="noopener">Try the preview</a><button class="tbtn" id="cl-ok">Approve, put it live</button><button class="tbtn" id="cl-no">Not this</button></div></div></div>`;
-    const go=async no=>{try{const r=await fetch('/api/interview/approve',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:wait.id,no})});if(!r.ok)throw 0;
-      wait.ship=no?'declined':'approved';LS.set('ob-asks',ASKS);renderClaude();showToast(no?'Left as it is':'Going live within 5 minutes');}catch{showToast('Could not reach the server');}};
-    $('#cl-ok').onclick=()=>go(false);$('#cl-no').onclick=()=>go(true);return;}
+  const pend=ASKS.filter(a=>a.status!=='done'&&a.kind!=='app'), fresh=ASKS.filter(a=>a.status==='done'&&a.kind!=='app'&&!SEEN.includes(a.id));
   const a=fresh[0]||pend[0]; if(!a){box.innerHTML='';return;}
   const n=fresh.length?fresh.length:pend.length, done=a.status==='done';
   const tag=done?`Claude answered${n>1?' . '+n+' new':''}`:`Claude is working${n>1?' on '+n:''}`;
@@ -1634,6 +1656,103 @@ function renderClaude(){
     if(a.interview){openIv(a.interview+'.m4a',false);}
     if(done)seeAsks([a.id]);};
 }
+/* Builds: talking to a project, and the loop with Claude on the laptop. Say what you want; Claude
+ * reads the app and shows a plan here; say go (or what to change); it builds a preview, showing
+ * what it is doing as it goes; try the preview, comment on it by voice, or approve it to go live.
+ * One Button is the first project built this way; other projects get answers, not builds, for now. */
+const isBuild=p=>!!p&&(p.build==='one-button'||p.seed==='one-button'||/^one ?button( app)?$/i.test(p.name||''));
+const STAGE_LABEL={waiting:'Waiting for the laptop',picked:'Picked up',planning:'Making a plan',plan:'Plan ready for you',building:'Building',checking:'Checking',
+  publishing:'Publishing the preview',preview:'Ready to try','going-live':'Going live',live:'Live',failed:'Stopped',done:'Answered',declined:'Left as it was'};
+const STEPS=['planning','plan','building','preview','live'],STEP_NAME={planning:'Plan',plan:'You',building:'Build',preview:'Try',live:'Live'};
+function askStage(a){if(a.ship==='live')return 'live';if(a.ship==='declined')return 'declined';if(a.ship==='approved')return 'going-live';
+  if(a.preview&&a.ship==='waiting')return 'preview';return a.stage||(a.status==='done'?'done':'waiting');}
+const askActive=a=>a.kind==='app'&&!['live','declined','done'].includes(askStage(a));
+function stepper(a){const s=askStage(a),i=STEPS.indexOf({checking:'building',publishing:'building','going-live':'live',waiting:'planning',picked:'planning'}[s]||s);
+  return `<div class="bl-steps">${STEPS.map((x,j)=>`<span class="bl-step${j<i?' past':j===i?' now':''}">${STEP_NAME[x]}</span>`).join('')}</div>`;}
+const askWords=a=>String(a.text||'').split('\n\nJay, on the plan:')[0].replace(/^About the project "[^"]*": /,'');
+function askCard(a){const s=askStage(a),log=(a.log||[]).slice(-3),busy=['waiting','picked','planning','building','checking','publishing','going-live'].includes(s);
+  return `<div class="bl-card"><div class="iv-tag">${escapeHtml(STAGE_LABEL[s]||s)}</div><div class="bl-text">${escapeHtml(askWords(a))}</div>
+    ${a.kind==='app'?stepper(a):''}
+    ${busy&&log.length?`<div class="bl-log">${log.map(l=>escapeHtml(l.s)).join('<br>')}</div>`:''}
+    ${(a.log||[]).length?`<button class="bl-more" data-log="${a.id}">See everything Claude did</button>`:''}
+    ${s==='plan'?`<div class="iv-row"><button class="tbtn" data-plan="${a.id}">See the plan</button></div>`:''}
+    ${s==='preview'?`<div class="iv-ans">${escapeHtml(a.answer||'')}</div><div class="iv-row"><button class="tbtn" data-try="${a.id}">Try it</button><button class="tbtn" data-ok="${a.id}">Approve, put it live</button><button class="tbtn" data-no="${a.id}">Not this</button></div>`:''}
+    ${s==='live'?'<p class="note">Live. Swipe One Button away and open it again to see it.</p>':''}
+    ${s==='done'?`<div class="iv-ans">${escapeHtml(a.answer||'')}</div>`:''}
+    ${s==='failed'?`<p class="note">${escapeHtml(a.shipNote||((a.log||[]).slice(-1)[0]||{}).s||'')}</p>`:''}</div>`;}
+function wireAskCards(box){const A=id=>ASKS.find(a=>a.id===id);
+  box.querySelectorAll('[data-plan]').forEach(b=>b.onclick=()=>openPlan(A(b.dataset.plan)));
+  box.querySelectorAll('[data-log]').forEach(b=>b.onclick=()=>openPlan(A(b.dataset.log),true));
+  box.querySelectorAll('[data-try]').forEach(b=>b.onclick=()=>tryPreview(A(b.dataset.try)));
+  box.querySelectorAll('[data-ok]').forEach(b=>b.onclick=()=>approveAsk(A(b.dataset.ok),false));
+  box.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>approveAsk(A(b.dataset.no),true));}
+async function approveAsk(a,no){if(!a)return;
+  try{const r=await fetch('/api/interview/approve',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:a.id,no})});if(!r.ok)throw 0;
+    a.ship=no?'declined':'approved';LS.set('ob-asks',ASKS);renderBuilds();showToast(no?'Left as it was':'Going live in about a minute');}catch{showToast('Could not reach the server');}}
+// Previews open inside the app, where they have your list; a bar on top lets you comment or approve.
+function tryPreview(a){if(!a||!a.preview)return;const u=a.preview.replace(/\/?$/,'/')+'?app=android&ask='+encodeURIComponent(a.id);
+  if(NATIVE)location.href=u;else window.open(u,'_blank','noopener');}
+// The plan (or everything Claude did) over the screen, with go ahead or a spoken change.
+let PLAN_ASK=null;
+function openPlan(a,logOnly){if(!a)return;PLAN_ASK=a;openSheet('#sheet-plan');
+  $('#pl-title').textContent=logOnly?'What Claude did':'Claude\'s plan';
+  $('#pl-body').innerHTML=`<p class="note">${escapeHtml(askWords(a))}</p>`+(logOnly
+    ?`<div class="bl-log" style="max-height:none">${(a.log||[]).map(l=>new Date(l.t).toTimeString().slice(0,5)+'  '+escapeHtml(l.s)).join('<br>')}</div>`
+    :`<div class="bl-plan">${escapeHtml(a.plan||'')}</div>
+      <div class="iv-row"><button class="tbtn" id="pl-go">Go ahead</button><button class="tbtn" id="pl-change">Change it (speak)</button></div>
+      <div class="note" id="pl-status"></div><input class="nd-when" id="pl-type" placeholder="Or type what to change" aria-label="What to change">`);
+  if(logOnly)return;
+  const send=async change=>{try{const r=await fetch('/api/interview/plan',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:a.id,change})});if(!r.ok)throw 0;
+      Object.assign(a,change?{plan:'',stage:'waiting'}:{planOk:true,stage:'waiting'});LS.set('ob-asks',ASKS);closeSheets();renderBuilds();
+      showToast(change?'Claude will plan again with that':'Building now');}catch{showToast('Could not reach the server');}};
+  $('#pl-go').onclick=()=>send('');
+  $('#pl-type').onchange=e=>{const t=e.target.value.trim();if(t)send(t);};
+  $('#pl-change').onclick=()=>speakOnce($('#pl-status'),t=>send(t));}
+// One short recording, its words handed to done(). Used wherever the app asks a question.
+function speakOnce(statusBox,done){let live=true;statusBox.textContent='listening, tap again to stop';
+  const rec=recognize({onLive:()=>{live=false;statusBox.textContent='writing it up...';},
+    onEnd:(t,err)=>{live=false;statusBox.textContent=t?'':'did not catch that, try again';if(t)done(t);}});
+  statusBox.onclick=()=>{if(live)rec.stop();};return rec;}
+// Talking to a project: a change if it is a build, a question or feedback otherwise.
+async function speakToProject(p,t){
+  const body={text:isBuild(p)?t:`About the project "${p.name}": ${t}`,project:p.id,app:isBuild(p)};
+  const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify(body)});
+  if(!r.ok)throw new Error('ask '+r.status);const a=await r.json();ASKS=[a,...ASKS];LS.set('ob-asks',ASKS);renderBuilds();return a;}
+// Main screen and project sheet: builds in progress, newest first.
+function renderBuilds(){const box=$('#build-strip');
+  if(box){const act=ASKS.filter(a=>askActive(a)||(a.kind==='app'&&askStage(a)==='live'&&Date.now()-(a.shipped||0)<36e5)).slice(0,3);
+    box.innerHTML=act.map(askCard).join('');wireAskCards(box);}
+  if($('#sheet-p1').classList.contains('open'))renderP1();
+  if($('#sheet-plan').classList.contains('open')&&PLAN_ASK){const a=ASKS.find(x=>x.id===PLAN_ASK.id);if(a&&$('#pl-title').textContent!=='Claude\'s plan')openPlan(a,true);}
+  renderLock();}
+// While Claude is working on a build, check every 6 seconds.
+setInterval(()=>{if(!document.hidden&&ASKS.some(a=>askActive(a)&&askStage(a)!=='plan'&&askStage(a)!=='preview'))ivRefresh();},6000);
+
+// On a preview: a bar to comment on it, approve it, or go back to the live app.
+(function previewBar(){if(!/--ask-/.test(location.host))return;const id=new URLSearchParams(location.search).get('ask')||'';
+  const bar=document.createElement('div');bar.className='pv-bar';
+  bar.innerHTML=`<div class="pv-what">Trying a preview</div><div class="iv-row" style="margin:6px 0 0"><button class="tbtn" id="pv-say">Comment (speak)</button>${id?'<button class="tbtn" id="pv-ok">Approve</button>':''}<button class="tbtn" id="pv-back">Back to live</button></div><div class="note" id="pv-status"></div>`;
+  document.body.appendChild(bar);
+  $('#pv-back').onclick=()=>{location.href='https://one-button-jay.web.app/?app=android';};
+  if(id)$('#pv-ok').onclick=async()=>{try{const r=await fetch('/api/interview/approve',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:id})});if(!r.ok)throw 0;
+    $('#pv-status').textContent='Approved: going live in about a minute. Taking you back.';setTimeout(()=>$('#pv-back').click(),2500);}catch{$('#pv-status').textContent='Could not reach the server';}};
+  $('#pv-say').onclick=()=>speakOnce($('#pv-status'),async t=>{try{const parent=ASKS.find(a=>a.id===id)||{};
+    const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({text:t,parent:id,project:parent.project||'',app:true})});if(!r.ok)throw 0;
+    $('#pv-status').textContent='Sent. Claude will plan it on top of this preview; the plan comes to the live app.';}catch{$('#pv-status').textContent='Could not send it';}});})();
+
+// Projects to sort: everything from conversations, Claude and the Idea Garden, one at a time.
+const triageQueue=()=>{const later=LS.get('ob-proj-later',[]);const q=PROJ.proposed.filter(p=>p.source!=='claude');
+  return [...q.filter(p=>!later.includes(p.name)),...q.filter(p=>later.includes(p.name))];};
+function renderTriage(){const box=$('#proj-triage');if(!box)return;const q=triageQueue(),p=q[0];
+  if(!p){box.innerHTML='';return;}
+  box.innerHTML=`<div class="tr-card"><div class="iv-tag">To sort . ${q.length} left</div><div class="tr-name">${escapeHtml(p.name)}</div>
+    <div class="nmeta">${escapeHtml([p.kind,p.stage,p.source==='conversation'&&p.fromTitle?'from '+p.fromTitle:''].filter(Boolean).join(' . '))}</div>
+    ${p.about?`<p>${escapeHtml(p.about)}</p>`:''}${p.link?`<p><a href="${escapeHtml(p.link)}" target="_blank" rel="noopener">Open it</a></p>`:''}
+    <div class="iv-row"><button class="tbtn" id="tr-phone">Steward, on my phone</button><button class="tbtn" id="tr-take">Steward</button><button class="tbtn" id="tr-later">Later</button><button class="tbtn" id="tr-no">Not mine</button></div></div>`;
+  const take=async(main,status)=>{const extra=/one ?button/i.test(p.name)||p.seed==='one-button'?{build:'one-button'}:{};
+    await projSave({...p,...extra,status:status||(p.source==='garden'?p.status:'Idea'),main});renderProj();renderNotes();};
+  $('#tr-phone').onclick=()=>take(true);$('#tr-take').onclick=()=>take(false);$('#tr-no').onclick=()=>take(false,'Dropped');
+  $('#tr-later').onclick=()=>{const l=LS.get('ob-proj-later',[]).filter(x=>x!==p.name);l.push(p.name);LS.set('ob-proj-later',l);renderTriage();};}
 // While Claude has work in hand, check every 30 seconds even with no card open.
 setInterval(()=>{if(!document.hidden&&ASKS.some(a=>a.status!=='done'))ivRefresh();},30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ASKS.length)ivRefresh();});
