@@ -922,7 +922,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden){nativeDon
 let PROJ=LS.get('ob-proj',{projects:[],proposed:[],statuses:['Idea','Exploring','Active','Paused','Done','Dropped']});
 async function projRefresh(){if(!obKey())return;
   try{const r=await fetch('/api/project/list',{method:'POST',headers:obHeaders(),body:'{}'});if(!r.ok)return;
-    PROJ=await r.json();LS.set('ob-proj',PROJ);renderProjMain();if($('#sheet-proj').classList.contains('open'))renderProj();}catch{}}
+    PROJ=await r.json();LS.set('ob-proj',PROJ);projLoaded=true;renderProjMain();if($('#sheet-proj').classList.contains('open'))renderProj();fileByPerson();}catch{}}
 async function projSave(p){
   try{const r=await fetch('/api/project/save',{method:'POST',headers:obHeaders(),body:JSON.stringify({project:p})});
     const d=await r.json();if(!r.ok)throw 0;
@@ -930,7 +930,27 @@ async function projSave(p){
     LS.set('ob-proj',PROJ);renderProjMain();return d;
   }catch{showToast('Could not save the project, try again');}}
 const projLive=p=>!['Done','Dropped'].includes(p.status);
-const tasksOf=p=>notes.filter(n=>!n.deleted&&(n.project===p.id||(!n.project&&n.from&&(p.from||[]).includes(n.from))));
+// People Jay works with closely get a project of their own. Conversations with them or naming them,
+// and projects that mention them, are filed into it once; anything he takes out stays out.
+const PERSON_PROJ=[{name:'Cordell Collaboration',person:'Cordell'}];
+const personOf=p=>p.person||(PERSON_PROJ.find(x=>x.name===p.name)||{}).person||'';
+const names=(t,who)=>!!who&&new RegExp('\\b'+who+'\\b','i').test(String(t||''));
+let projLoaded=false,filing=false;
+async function fileByPerson(){if(!projLoaded||filing)return;filing=true;
+  try{const filed=new Set(LS.get('ob-filed',[]));
+    for(const w of PERSON_PROJ){let hub=PROJ.projects.find(p=>personOf(p)===w.person);
+      if(!hub)hub=await projSave({name:w.name,person:w.person,status:'Active',source:'you',main:true});
+      if(!hub||!projLive(hub))continue;
+      const convs=Object.entries(IVS).filter(([id,s])=>s.status==='done'&&!filed.has(id)&&((s.people||[]).some(x=>names(x,w.person))||names(s.title,w.person))).map(([id])=>id);
+      const add=convs.filter(id=>!(hub.from||[]).includes(id));
+      const d=add.length?await projSave({...hub,from:[...(hub.from||[]),...add]}):hub;
+      if(d){hub=d;convs.forEach(id=>filed.add(id));}
+      for(const p of PROJ.projects.filter(p=>p.id!==hub.id&&projLive(p)&&!p.parent&&!filed.has(p.id)&&(names(p.name,w.person)||names(p.about,w.person)))){
+        if(familyOf(p.id).has(hub.id)||await projSave({...p,parent:hub.id}))filed.add(p.id);}}
+    LS.set('ob-filed',[...filed]);
+  }finally{filing=false;}}
+// A task also belongs to a person's project when it names them and sits in no other project.
+const tasksOf=p=>notes.filter(n=>!n.deleted&&(n.project===p.id||(!n.project&&((n.from&&(p.from||[]).includes(n.from))||names(n.text,personOf(p))))));
 // Ticked projects head the to-do list on the main screen.
 function renderProjMain(){renderNotes();}
 const kidsOf=id=>PROJ.projects.filter(p=>projLive(p)&&p.parent===id);
@@ -1490,7 +1510,7 @@ async function ivRefresh(){
       if(mine.status==='working'&&iv.status!=='done'&&iv.status!=='error')continue;
       IVS[iv.id]={...mine,...iv};}
     const was=new Set(ASKS.filter(a=>a.status==='done').map(a=>a.id));
-    ASKS=d.asks||[]; LS.set('ob-ivs',IVS); LS.set('ob-asks',ASKS); ivAuto();
+    ASKS=d.asks||[]; LS.set('ob-ivs',IVS); LS.set('ob-asks',ASKS); ivAuto(); fileByPerson();
     if(ASKS.some(a=>a.status==='done'&&!was.has(a.id))){showToast('Claude answered');try{navigator.vibrate&&navigator.vibrate(80);}catch{}}
     renderClaude();
     if($('#sheet-ivs').classList.contains('open'))renderInterviews();
