@@ -39,6 +39,15 @@
   .ico-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
   .stage{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;align-items:center;gap:22px;padding:24px 16px 30px}
   .todo{width:100%;max-width:520px;text-align:left}
+  .backend #status,.backend #shell,.backend #levels,.backend #heard,.backend #hint{display:none}
+  .pb-top{display:flex;justify-content:space-between;align-items:center;margin:0 0 4px}
+  .pb-cat{font:600 11px "IBM Plex Mono",monospace;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:16px 0 2px}
+  .pb-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;width:100%;min-height:48px;padding:10px 0;border:0;border-bottom:1px solid var(--line);background:none;color:inherit;text-align:left;font:600 16px "Inter",sans-serif;cursor:pointer}
+  .pb-row small{font:400 12px "IBM Plex Mono",monospace;color:var(--muted);white-space:nowrap}
+  .pb-sub{color:var(--muted);font-weight:400}
+  .p1-lbl{font:600 11px "IBM Plex Mono",monospace;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+  .p1-about{width:100%;min-height:90px;padding:10px;border:1px solid var(--line);font:400 16px/1.5 "Inter",sans-serif;background:#fff;color:var(--ink);resize:vertical}
+  .p1-x{background:none;border:0;min-width:44px;min-height:44px;color:var(--muted);font-size:20px;cursor:pointer}
   .todo .empty{padding:20px}
   .pj-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:18px 0 2px;padding:6px 0;border-bottom:2px solid var(--terra);color:var(--terra);font:700 15px "Inter Tight",sans-serif;cursor:pointer;background:none;border-top:0;border-left:0;border-right:0;width:100%;text-align:left;min-height:44px}
   .pj-h small{font:400 12px "IBM Plex Mono",monospace;opacity:.75}
@@ -248,6 +257,7 @@
   .lk-close:focus-visible,.lk-tick:focus-visible,.lk-orb:focus-visible,.lk-int:focus-visible{outline:2px solid var(--spark);outline-offset:3px}
   @media (prefers-reduced-motion:reduce){.lock.rec .lk-orb{animation:none;outline:3px solid #FFFFFF;outline-offset:4px}.lk-item{transition:none}}
 </style>
+<script>if(window.OBNative)document.documentElement.classList.add("backend");</script>
 </head>
 <body>
 <canvas id="myc"></canvas>
@@ -277,6 +287,7 @@
       <div class="acts" id="result-acts"></div>
     </div>
     <div id="alarms-main" class="alarms"></div>
+    <section class="todo" id="proj-main" aria-label="Projects"></section>
     <section class="todo" id="todo" aria-label="To do">
     <div id="build-strip"></div>
     <div id="claude-strip"></div>
@@ -337,7 +348,7 @@
 <div class="sheet" id="sheet-settings">
   <div class="sheet-bar"><h2>Settings</h2><button class="sheet-x" data-close>&times;</button></div>
   <div class="sheet-body">
-    <div class="iv-row" style="margin-bottom:18px"><button class="tbtn" id="open-saver">Screensaver</button><button class="tbtn" id="set-lockview">Lock screen view</button></div>
+    <div class="iv-row" style="margin-bottom:18px"><button class="tbtn" id="set-lockview">Lock screen view</button></div>
     <div class="field" id="key-field">
       <label for="set-key">App key (browser only)</label>
       <input id="set-key" type="password" autocomplete="off" placeholder="paste the One Button key" />
@@ -764,13 +775,13 @@ function gcal(o){
 
 let filter='all';
 function renderNotes(){
-  renderLock();
+  renderLock();renderProjBoard();
   const list=$('#notes-list');
   let items=notes.filter(n=>!n.done && !n.deleted && (filter==='all'||n.cat===filter));
   list.innerHTML='';
   // The projects ticked for the main screen come first, each with its own to-dos under it;
   // everything else follows by kind of action.
-  const top=PROJ.projects.filter(p=>p.main&&projLive(p)),inTop=new Set();
+  const top=document.documentElement.classList.contains('backend')?[]:PROJ.projects.filter(p=>p.main&&projLive(p)),inTop=new Set();
   for(const p of top){const mine=items.filter(n=>tasksOf(p).includes(n));mine.forEach(n=>inTop.add(n.id));
     const hd=document.createElement('button');hd.className='pj-h';
     hd.innerHTML=`<span>${escapeHtml(p.name)}</span><small>${escapeHtml(p.status)}${mine.length?' . '+mine.length+' to do':''}</small>`;
@@ -916,6 +927,23 @@ const projLive=p=>!['Done','Dropped'].includes(p.status);
 const tasksOf=p=>notes.filter(n=>!n.deleted&&(n.project===p.id||(!n.project&&n.from&&(p.from||[]).includes(n.from))));
 // Ticked projects head the to-do list on the main screen.
 function renderProjMain(){renderNotes();}
+const kidsOf=id=>PROJ.projects.filter(p=>projLive(p)&&p.parent===id);
+// A project and everything under it, so a project is never placed inside its own subproject.
+const familyOf=id=>{const out=new Set([id]);let grew=true;while(grew){grew=false;for(const p of PROJ.projects)if(p.parent&&out.has(p.parent)&&!out.has(p.id)){out.add(p.id);grew=true;}}return out;};
+function renderProjBoard(){const box=$('#proj-main');if(!box)return;
+  if(!document.documentElement.classList.contains('backend')){box.innerHTML='';return;}
+  const live=PROJ.projects.filter(projLive),ids=new Set(live.map(p=>p.id)),tops=live.filter(p=>!p.parent||!ids.has(p.parent));
+  const stage=p=>{try{const b=ASKS.find(a=>a.project===p.id&&askActive(a));return b?' . '+STAGE_LABEL[askStage(b)]:'';}catch{return '';}};
+  const row=(p,d)=>{const open=tasksOf(p).filter(n=>!n.done).length;
+    return `<button class="pb-row" data-pb="${p.id}" style="padding-left:${d*18}px"><span>${d?'<span class="pb-sub">&#8627;</span> ':''}${escapeHtml(p.name)}</span><small>${escapeHtml(p.status)}${open?' . '+open+' to do':''}${escapeHtml(stage(p))}</small></button>`
+      +(d<4?kidsOf(p.id).map(k=>row(k,d+1)).join(''):'');};
+  const cats=[...new Set(tops.map(p=>p.kind||''))].sort((a,b)=>(!a)-(!b)||a.localeCompare(b));
+  box.innerHTML=`<div class="pb-top"><span class="sec-lbl">Projects</span><button class="tbtn" id="pb-all">Add or sort</button></div>`
+    +(tops.length?cats.map(c=>`<div class="pb-cat">${escapeHtml(c||'No category yet')}</div>`+tops.filter(p=>(p.kind||'')===c).sort((a,b)=>(b.main-a.main)||a.name.localeCompare(b.name)).map(p=>row(p,0)).join('')).join('')
+      :'<p class="note">No projects yet. Tap Add or sort.</p>')
+    +'<div class="pb-cat" style="margin-top:26px">Tasks</div>';
+  box.querySelectorAll('[data-pb]').forEach(x=>x.onclick=()=>openProject(PROJ.projects.find(p=>p.id===x.dataset.pb)));
+  $('#pb-all').onclick=()=>$('#open-proj').click();}
 function renderProj(){const box=$('#proj-list');
   const live=PROJ.projects.filter(projLive),rest=PROJ.projects.filter(p=>!projLive(p));
   const conv=PROJ.proposed.filter(p=>p.source==='conversation'),asks=PROJ.proposed.filter(p=>p.source==='claude'),gard=PROJ.proposed.filter(p=>p.source==='garden');
@@ -948,22 +976,39 @@ let P1=null;
 function openProject(p){P1=p;openSheet('#sheet-p1');renderP1();}
 function renderP1(){const p=PROJ.projects.find(x=>x.id===P1.id)||P1;P1=p;$('#p1-title').textContent=p.name;
   const ts=tasksOf(p),open=ts.filter(n=>!n.done),done=ts.filter(n=>n.done);
+  const cats=[...new Set(PROJ.projects.map(x=>x.kind).filter(Boolean))].sort(),fam=familyOf(p.id),parents=PROJ.projects.filter(x=>projLive(x)&&!fam.has(x.id)),kids=kidsOf(p.id);
+  const more=Object.entries(IVS).map(([id,s])=>({...s,id})).filter(s=>s.status==='done'&&!(p.from||[]).includes(s.id)).sort((a,b)=>(b.created||0)-(a.created||0)).slice(0,30);
   const convs=(p.from||[]).map(id=>({id,s:IVS[id]})).filter(c=>c.s),pa=ASKS.filter(a=>a.project===p.id).slice(0,6);
   $('#p1-body').innerHTML=`<button class="p1-speak" id="p1-speak">${isBuild(p)?'Speak a change to this build':'Speak to this project'}</button><div class="note" id="p1-status"></div>
     ${pa.length?`<div class="iv-h">With Claude</div>${pa.map(askCard).join('')}`:''}
     ${p.link?`<p><a href="${escapeHtml(p.link)}" target="_blank" rel="noopener">Open ${escapeHtml(p.name)}</a></p>`:''}
     <div>${PROJ.statuses.map(s=>`<button class="chip${s===p.status?' on':''}" data-st="${s}">${s}</button>`).join('')}</div>
     <label class="iv-row" style="align-items:center;gap:8px;margin:10px 0"><input type="checkbox" id="p1-main" ${p.main?'checked':''} style="width:22px;height:22px"> On the main screen</label>
-    ${p.about?`<p>${escapeHtml(p.about)}</p>`:''}
-    <input class="nd-when" id="p1-kind" placeholder="Kind of work, e.g. Weave, Dahab, writing" value="${escapeHtml(p.kind||'')}" aria-label="Kind of work">
+    <div class="p1-lbl">Name</div><input class="nd-when" id="p1-name" value="${escapeHtml(p.name)}" aria-label="Project name" style="width:100%">
+    <div class="p1-lbl">Notes</div><textarea class="p1-about" id="p1-about" aria-label="Notes on this project" placeholder="What it is, where it is going">${escapeHtml(p.about||'')}</textarea>
+    <div class="p1-lbl">Category</div><div>${cats.map((c,i)=>`<button class="chip${c===p.kind?' on':''}" data-pk="${i}">${escapeHtml(c)}</button>`).join('')}</div>
+    <input class="nd-when" id="p1-kind" placeholder="New category" aria-label="New category" style="margin-top:6px">
+    <div class="p1-lbl">Part of</div><div><button class="chip${p.parent?'':' on'}" data-pp="">Nothing, it stands alone</button>${parents.map((x,i)=>`<button class="chip${x.id===p.parent?' on':''}" data-pp="${i}">${escapeHtml(x.name)}</button>`).join('')}</div>
+    <div class="p1-lbl">Subprojects</div>${kids.map((k,i)=>`<div class="note-item"><div class="ntext" data-pkid="${i}">${escapeHtml(k.name)}<div class="nmeta">${escapeHtml(k.status)}</div></div></div>`).join('')}
+    <input class="nd-when" id="p1-sub" placeholder="Add a subproject" aria-label="Add a subproject" style="width:100%">
     <div class="iv-h">To do (${open.length})</div>${open.map((n,i)=>`<div class="note-item"><div class="ntext" data-pt="${i}">${escapeHtml(n.text)}<div class="nmeta">${whenOf(n)||CAT[n.cat].label}</div></div><button class="ndone" data-pd="${i}" title="done">&#10003;</button></div>`).join('')||'<p class="note">No tasks yet. Link one from its task screen.</p>'}
     ${done.length?`<p class="note">${done.length} done</p>`:''}
-    ${convs.length?`<div class="iv-h">Conversations</div>${convs.map((c,i)=>`<div class="note-item"><div class="ntext" data-pc="${i}">${escapeHtml(c.s.title||c.id)}<div class="nmeta">${(c.s.people||[]).length?'with '+escapeHtml(c.s.people.join(', ')):''}</div></div></div>`).join('')}`:''}`;
+    <div class="iv-h">Conversations</div>${convs.map((c,i)=>`<div class="note-item"><div class="ntext" data-pc="${i}">${escapeHtml(c.s.title||c.id)}<div class="nmeta">${(c.s.people||[]).length?'with '+escapeHtml(c.s.people.join(', ')):''}</div></div><button class="p1-x" data-pcx="${i}" aria-label="Take this conversation off the project">&times;</button></div>`).join('')||'<p class="note">None yet.</p>'}
+    ${more.length?`<details><summary class="tbtn" style="display:inline-block;margin-top:6px">Add a conversation</summary>${more.map((s,i)=>`<div class="note-item"><div class="ntext" data-pca="${i}">${escapeHtml(s.title||s.id)}<div class="nmeta">${new Date(s.created||0).toLocaleDateString()}${(s.people||[]).length?' . with '+escapeHtml(s.people.join(', ')):''}</div></div></div>`).join('')}</details>`:''}`;
   const b=$('#p1-body');wireAskCards(b);
   $('#p1-speak').onclick=()=>speakOnce($('#p1-status'),async t=>{try{const a=await speakToProject(p,t);$('#p1-status').textContent=a.kind==='app'?'Sent. Claude will show you a plan first.':'Sent to Claude.';}catch{$('#p1-status').textContent='Could not send it';}});
   b.querySelectorAll('[data-st]').forEach(x=>x.onclick=async()=>{await projSave({...p,status:x.dataset.st});renderP1();});
   $('#p1-main').onchange=e=>projSave({...p,main:e.target.checked});
-  $('#p1-kind').onchange=e=>projSave({...p,kind:e.target.value.trim()});
+  const put=async ch=>{await projSave({...p,...ch});renderP1();};
+  $('#p1-kind').onchange=e=>{const k=e.target.value.trim();if(k)put({kind:k});};
+  b.querySelectorAll('[data-pk]').forEach(x=>x.onclick=()=>put({kind:cats[+x.dataset.pk]===p.kind?'':cats[+x.dataset.pk]}));
+  $('#p1-name').onchange=e=>{const n=e.target.value.trim();if(n&&n!==p.name){$('#p1-title').textContent=n;put({name:n});}};
+  $('#p1-about').onchange=e=>projSave({...p,about:e.target.value});
+  b.querySelectorAll('[data-pp]').forEach(x=>x.onclick=()=>put({parent:x.dataset.pp===''?'':parents[+x.dataset.pp].id}));
+  b.querySelectorAll('[data-pkid]').forEach(x=>x.onclick=()=>openProject(kids[+x.dataset.pkid]));
+  $('#p1-sub').onchange=async e=>{const name=e.target.value.trim();if(!name)return;await projSave({name,status:'Idea',source:'you',kind:p.kind||'',parent:p.id});renderP1();};
+  b.querySelectorAll('[data-pcx]').forEach(x=>x.onclick=()=>put({from:(p.from||[]).filter(id=>id!==convs[+x.dataset.pcx].id)}));
+  b.querySelectorAll('[data-pca]').forEach(x=>x.onclick=()=>put({from:[...(p.from||[]),more[+x.dataset.pca].id]}));
   b.querySelectorAll('[data-pt]').forEach(x=>x.onclick=()=>openNote(open[+x.dataset.pt].id));
   b.querySelectorAll('[data-pd]').forEach(x=>x.onclick=()=>{tick(open[+x.dataset.pd]);save();renderNotes();renderP1();});
   b.querySelectorAll('[data-pc]').forEach(x=>x.onclick=()=>openIv(convs[+x.dataset.pc].id+'.m4a',false));}
@@ -1279,8 +1324,7 @@ function startSaver(){
 }
 function stopSaver(){saver.classList.remove('on');clearInterval(saverCycle);}
 saver.onclick=()=>{stopSaver();resetIdle();};
-$('#open-saver').onclick=()=>{closeSheets();startSaver();};
-function resetIdle(){clearTimeout(idle);idle=setTimeout(()=>{if(!mainLive&&!document.querySelector('.sheet.open'))startSaver();},45000);}
+function resetIdle(){}
 ['click','touchstart','keydown'].forEach(e=>document.addEventListener(e,resetIdle,{passive:true}));
 
 /* Lock screen view. The One Button phone app (window.OBNative) shows it over the Android
