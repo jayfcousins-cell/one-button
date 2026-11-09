@@ -66,7 +66,7 @@
 <body>
 <div class="wrap">
   <div class="bar"><span class="mark">One <b>Button</b></span><span class="tag">Shared space</span></div>
-  <div class="preview" id="preview">Preview with made-up content. This is what someone sees after tapping the link you shared.</div>
+  <div class="preview hidden" id="preview">Preview with made-up content. This is what someone sees after tapping the link you shared.</div>
   <div class="box hidden" id="gate"><h2 id="gate-t" style="margin-top:0">Opening your space</h2><p id="gate-x" style="margin:0">One moment.</p></div>
 
   <div id="body">
@@ -335,7 +335,7 @@ function weave(){
     function claim(){
       gate('Opening your space','Signing you in on this device.');
       post('claim',{slug:SLUG,d:DEV}).then(c=>{stripInvite();
-        return W.useAccountCode(c.name,c.code,{device:W.describeDevice()}).then(r=>{if(!r||!r.ok)throw new Error((r&&r.reason)||'sign-in failed');return enter(c.name);});})
+        return W.useAccountCode(c.name,c.code,{device:W.describeDevice()}).then(r=>{if(!r||!r.ok)throw new Error((r&&r.reason)||'sign-in failed');return open();});})
         .catch(e=>{const why=String((e&&e.message)||e);stripInvite();
           if(/used|bad link/.test(why))gate('This link has been used','Each link opens the space on one phone or computer. Ask Jay for a new one.');
           else gate('The space did not open just now','Ask Jay for a new link. If it keeps happening, tell Jay this: '+why+'.');});
