@@ -273,6 +273,7 @@
     </div>
   </div>
   <div class="stage" id="stage">
+    <a class="pill go" id="upd-new" href="https://github.com/jayfcousins-cell/one-button-android/releases/latest" style="display:none;text-decoration:none">Update available</a>
     <div class="status" id="status">tap to speak</div>
     <div class="orb-shell" id="shell">
       <div class="ring r1"></div>
@@ -641,7 +642,7 @@ Return ONLY raw JSON, no markdown:
  "minutes":60,
  "answer":"spoken answer, 1-2 sentences"
 }
-Rules: "remind me", "I noticed", "X is broken", "buy Y", "check Z" are captures. "tell/message/ping/text/whatsapp/dm someone" -> action message. "call/phone/ring someone" -> action call. "book/schedule/add ... to calendar" -> action calendar. Use channel "auto" unless the user names one. Keep text tight. Today is ${new Date().toISOString()}.`;
+Rules: "remind me", "I noticed", "X is broken", "buy Y", "check Z" are captures. "tell/message/ping/text/whatsapp/dm someone" -> action message. "call/phone/ring someone" -> action call. "book/schedule/add ... to calendar" -> action calendar. "set an alarm at 5", "wake me at 6" -> capture, category do, text starting "Alarm" (e.g. "Alarm at 5"), due the next time that comes round. Use channel "auto" unless the user names one. Keep text tight. Today is ${new Date().toISOString()}.`;
 
 // "Claude, ..." or "for Claude ..." goes to Claude on the laptop rather than onto the list.
 const FOR_CLAUDE=/^\s*(hey |ok |okay )?(claude|agent)\b[,:. ]*|^\s*(for|ask|tell) (claude|an agent|the agent)\b(\s+to\b)?[,:. ]*/i;
@@ -725,6 +726,7 @@ function handle(out,original){
     const note={id:Date.now(),text:out.text||original,cat,done:false,ts:Date.now(),subs:[],due:out.due||'',place:out.place||''};
     noteWhere(note.id,'said',pendingFix);
     if(!absorb(note))notes.unshift(note); save(); renderNotes();
+    if(isAlarm(note))rLabel.textContent='alarm set'+(whenOf(note)?' . '+whenOf(note):'');
     // Notices also plant on the shared Canopy spine (localStorage stays the app's own read model).
     if(window.CanopySpine){ CanopySpine.createNode({name:note.text,kind:'note',source_app:'one-button',
       geo:{local_to_dahab:/\bdahab\b/i.test(note.text)},lineage:{},demand:0}).catch(()=>{}); }
@@ -777,7 +779,7 @@ let filter='all';
 function renderNotes(){
   renderLock();renderProjBoard();
   const list=$('#notes-list');
-  let items=notes.filter(n=>!n.done && !n.deleted && (filter==='all'||n.cat===filter));
+  let items=notes.filter(n=>!n.done && !n.deleted && onList(n) && (filter==='all'||n.cat===filter));
   list.innerHTML='';
   // The projects ticked for the main screen come first, each with its own to-dos under it;
   // everything else follows by kind of action.
@@ -860,12 +862,18 @@ function dueAt(n){const d=n&&n.due;if(!d||!/T\d/.test(d))return 0;const t=Date.p
 function whenOf(n){const t=dueAt(n);if(!t)return n&&n.due?escapeHtml(n.due):'';const d=new Date(t),hm=d.toTimeString().slice(0,5),day=new Date();day.setHours(0,0,0,0);
   const diff=Math.round((new Date(d).setHours(0,0,0,0)-day)/864e5);
   return (diff===0?'today':diff===1?'tomorrow':diff===-1?'yesterday':d.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))+' '+hm;}
+// "Set an alarm at 5" is for the phone to do, not Jay: it rings at the time and stays off the list.
+const isAlarm=n=>/^\s*(?:set\s+(?:an?\s+|the\s+|my\s+)?)?alarm\b|^\s*wake\s+me\b/i.test(n&&n.text||'');
+// The to-do lists show today and no date only; a later day's tasks appear that morning (Today looks ahead).
+function onList(n){if(isAlarm(n))return false;
+  const t=dueAt(n)||(/^\d{4}-\d{2}-\d{2}/.test(n.due||'')?new Date(n.due.slice(0,10)+'T00:00').getTime():0);
+  return !t||t<dayStart(Date.now())+DAY;}
 /* Alarms. Every open task with a time rings an hour, half an hour and ten minutes before (each one
  * can be switched off on the task, or from the alarm once it has gone off). A ringing alarm snoozes
  * for 10, 20 or 30 minutes, or is done. The phone keeps the set (and puts it back after a restart);
  * this hands over all of it whenever the list changes. */
 const LADDER=[60,30,10], AL_GRACE=30*60*1000;
-const ladderOf=n=>n.noAlarm?[]:(Array.isArray(n.remind)?n.remind:LADDER);
+const ladderOf=n=>n.noAlarm?[]:isAlarm(n)?[0]:(Array.isArray(n.remind)?n.remind:LADDER);
 function alarmTimes(n){const t=dueAt(n);if(!t)return [];
   const out=ladderOf(n).map(m=>({key:String(m),at:t-m*6e4,mins:m}));
   if(n.snooze)out.push({key:'snz',at:n.snooze,mins:Math.round((t-n.snooze)/6e4)});
@@ -906,7 +914,7 @@ function nativeDone(){const N=window.OBNative;if(!(N&&N.takeAlarmActions))return
   let hit=false;for(const a of acts){const n=notes.find(x=>String(x.id)===String(a.id).split('|')[0]);if(!n||n.done)continue;hit=true;
     if(a.act==='done')tick(n);else{n.alarmSeen=a.at;n.snooze=a.at+a.m*6e4;}}
   if(hit){save();renderNotes();}}
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){nativeDone();loadEvents();syncAlarms();maybeBrief();}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){nativeDone();loadEvents();syncAlarms();renderNotes();maybeBrief();}});
 /* Projects. The Projects screen sorts everything: the projects Jay stewards, proposals found in
  * recorded conversations, and things he asked Claude to look into. Ticked ones sit on the main
  * screen beside the button. A task belongs to a project when it is linked on the task, or when it
@@ -1337,7 +1345,7 @@ function lockClock(){const d=new Date();
   $('#lk-date').textContent=d.toLocaleDateString([],{weekday:'long',day:'numeric',month:'long'});}
 function renderLock(){
   if(!lock.classList.contains('on'))return;
-  const items=notes.filter(n=>!n.done);
+  const items=notes.filter(n=>!n.done&&!n.deleted&&onList(n));
   $('#lk-count').textContent=items.length?items.length+' open':'';
   if(!items.length){lkList.innerHTML='<div class="lk-empty">Nothing open. Tap the button and say what needs doing.</div>';return;}
   if(!LS.get('ob-lockfull',true)){lkList.innerHTML=`<div class="lk-empty">${items.length} ${items.length>1?'tasks':'task'} open. Open One Button to see them.</div>`;return;}
@@ -1383,7 +1391,7 @@ function hideLock(){lock.classList.remove('on');clearInterval(lkClockT);}
 let lkRec=null, lkLive=false;
 // Leaving the app ends a recording made in the page, so the microphone is never left on out of sight.
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)return;if(mainLive&&mainRec)mainRec.stop();if(lkLive&&lkRec)lkRec.stop();});
-const TASKS_SYS=`The user speaks to a to-do app from their phone's lock screen. Pull out every task they mention. Return ONLY a raw JSON array, no markdown: [{"text":"short clean task","category":"fix"|"check"|"buy"|"do","due":"ISO 8601 date-time if they gave a time or day, else empty","place":"a place they named (home, the market), else empty","aisle":"for buy only, one of: ${AISLES.map(a=>a[0]).join(' | ')}, else empty","every":"days between repeats if they say it repeats (every day 1, every week 7, every month 30) or it is plainly a routine chore, else 0"}]. One item per separate task. Keep their meaning and any time, place or person they name. Today is ${new Date().toString()}. If there is no task, return [].`;
+const TASKS_SYS=`The user speaks to a to-do app from their phone's lock screen. Pull out every task they mention. Return ONLY a raw JSON array, no markdown: [{"text":"short clean task","category":"fix"|"check"|"buy"|"do","due":"ISO 8601 date-time if they gave a time or day, else empty","place":"a place they named (home, the market), else empty","aisle":"for buy only, one of: ${AISLES.map(a=>a[0]).join(' | ')}, else empty","every":"days between repeats if they say it repeats (every day 1, every week 7, every month 30) or it is plainly a routine chore, else 0"}]. One item per separate task. An alarm ("set an alarm at 5") is an item whose text starts "Alarm", with its time as due. Keep their meaning and any time, place or person they name. Today is ${new Date().toString()}. If there is no task, return [].`;
 // Status from an earlier recording never covers one in progress.
 const lkSay=s=>{if(!lkLive&&!intOn)lkStatus.textContent=s;};
 function lockRecord(){
@@ -1729,7 +1737,7 @@ function askCard(a){const s=askStage(a),log=(a.log||[]).slice(-3),busy=['waiting
     ${(a.log||[]).length?`<button class="bl-more" data-log="${a.id}">See everything Claude did</button>`:''}
     ${s==='plan'?`<div class="iv-row"><button class="tbtn" data-plan="${a.id}">See the plan</button></div>`:''}
     ${s==='preview'?`<div class="iv-ans">${escapeHtml(a.answer||'')}</div><div class="iv-row"><button class="tbtn" data-try="${a.id}">Try it</button><button class="tbtn" data-ok="${a.id}">Approve, put it live</button><button class="tbtn" data-no="${a.id}">Not this</button></div>`:''}
-    ${s==='live'?'<p class="note">Live. Swipe One Button away and open it again to see it.</p>':''}
+    ${s==='live'?`<p class="note">Updated. If you do not see the change yet, swipe One Button away and open it again.</p><div class="iv-row"><button class="tbtn" data-seen="${a.id}">Got it</button></div>`:''}
     ${s==='done'?`<div class="iv-ans">${escapeHtml(a.answer||'')}</div>`:''}
     ${s==='failed'?`<p class="note">${escapeHtml(a.shipNote||((a.log||[]).slice(-1)[0]||{}).s||'')}</p>`:''}</div>`;}
 function wireAskCards(box){const A=id=>ASKS.find(a=>a.id===id);
@@ -1737,7 +1745,8 @@ function wireAskCards(box){const A=id=>ASKS.find(a=>a.id===id);
   box.querySelectorAll('[data-log]').forEach(b=>b.onclick=()=>openPlan(A(b.dataset.log),true));
   box.querySelectorAll('[data-try]').forEach(b=>b.onclick=()=>tryPreview(A(b.dataset.try)));
   box.querySelectorAll('[data-ok]').forEach(b=>b.onclick=()=>approveAsk(A(b.dataset.ok),false));
-  box.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>approveAsk(A(b.dataset.no),true));}
+  box.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>approveAsk(A(b.dataset.no),true));
+  box.querySelectorAll('[data-seen]').forEach(b=>b.onclick=()=>seeAsks([b.dataset.seen]));}
 async function approveAsk(a,no){if(!a)return;
   try{const r=await fetch('/api/interview/approve',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:a.id,no})});if(!r.ok)throw 0;
     a.ship=no?'declined':'approved';LS.set('ob-asks',ASKS);renderBuilds();showToast(no?'Left as it was':'Going live in about a minute');}catch{showToast('Could not reach the server');}}
@@ -1772,11 +1781,21 @@ async function speakToProject(p,t){
   if(!r.ok)throw new Error('ask '+r.status);const a=await r.json();ASKS=[a,...ASKS];LS.set('ob-asks',ASKS);renderBuilds();return a;}
 // Main screen and project sheet: builds in progress, newest first.
 function renderBuilds(){const box=$('#build-strip');
-  if(box){const act=ASKS.filter(a=>askActive(a)||(a.kind==='app'&&askStage(a)==='live'&&Date.now()-(a.shipped||0)<36e5)).slice(0,3);
+  // A change that has gone live stays as "Updated" until tapped Got it (for up to three days).
+  if(box){const act=ASKS.filter(a=>askActive(a)||(a.kind==='app'&&askStage(a)==='live'&&!SEEN.includes(a.id)&&Date.now()-(a.shipped||0)<3*864e5)).slice(0,3);
     box.innerHTML=act.map(askCard).join('');wireAskCards(box);}
   if($('#sheet-p1').classList.contains('open'))renderP1();
   if($('#sheet-plan').classList.contains('open')&&PLAN_ASK){const a=ASKS.find(x=>x.id===PLAN_ASK.id);if(a&&$('#pl-title').textContent!=='Claude\'s plan')openPlan(a,true);}
   renderLock();}
+/* A new release of the phone app shows "Update available" on the main screen until tapped. The
+ * phone app does not say which version it is yet, so tapping is what counts as having it. */
+function checkUpdate(){if(!NATIVE||Date.now()-LS.get('ob-upd-at',0)<36e5){showUpdate();return;}
+  fetch('https://api.github.com/repos/jayfcousins-cell/one-button-android/releases/latest').then(r=>r.ok?r.json():null)
+    .then(d=>{if(!d||!d.tag_name)return;LS.set('ob-upd-at',Date.now());LS.set('ob-upd-tag',d.tag_name);showUpdate();}).catch(()=>{});}
+function showUpdate(){const tag=LS.get('ob-upd-tag',''),b=$('#upd-new');
+  b.style.display=NATIVE&&tag&&tag!==LS.get('ob-upd-got','')?'':'none';
+  b.onclick=()=>{LS.set('ob-upd-got',tag);b.style.display='none';};}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate();});
 // While Claude is working on a build, check every 6 seconds.
 setInterval(()=>{if(!document.hidden&&ASKS.some(a=>askActive(a)&&askStage(a)!=='plan'&&askStage(a)!=='preview'))ivRefresh();},6000);
 
@@ -1841,7 +1860,7 @@ function boot(){
   $('#pl-add-here').onclick=async()=>{await addPlace($('#pl-name').value,$('#pl-kind').value,true);$('#pl-name').value='';};
   $('#pl-add').onclick=async()=>{await addPlace($('#pl-name').value,$('#pl-kind').value,false);$('#pl-name').value='';};
   $('#rh-add').onclick=()=>{addRoutine($('#rh-text').value,+$('#rh-every').value);$('#rh-text').value='';};
-  loadEvents();renderSpaces();spRefresh();revive();syncAlarms();renderProjMain();projRefresh();maybeBrief();
+  loadEvents();renderSpaces();spRefresh();revive();syncAlarms();renderProjMain();projRefresh();checkUpdate();maybeBrief();
 }
 boot();
 </script>
