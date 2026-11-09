@@ -186,7 +186,6 @@
   .lk-orb{width:112px;height:112px;border-radius:50%;border:none;background:var(--spark);color:#1A1A1A;display:grid;place-items:center;cursor:pointer;transition:transform .15s,opacity .15s}
   .lk-orb:active{transform:scale(.96)}
   .lock.rec .lk-orb{animation:lkpulse 1.1s ease-in-out infinite}
-  .lock.busy .lk-orb{opacity:.6}
   @keyframes lkpulse{0%,100%{box-shadow:0 0 0 0 rgba(230,255,0,.5)}50%{box-shadow:0 0 0 18px rgba(230,255,0,0)}}
   .lk-int{width:64px;height:64px;border:1px solid rgba(255,255,255,.3);background:transparent;color:#FFFFFF;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase}
   .chk{display:flex;gap:10px;align-items:center;font-size:15px;margin:4px 0 16px;cursor:pointer}
@@ -558,21 +557,24 @@ function recognize({onLive,onStart,onEnd,onLong}){
 let mainRec=null, mainLive=false, barsTimer=null;
 function barsGo(){ clearInterval(barsTimer); barsTimer=setInterval(()=>bars.forEach(b=>b.style.height=(6+Math.random()*20)+'px'),90); }
 function barsStop(){ clearInterval(barsTimer); bars.forEach(b=>b.style.height='6px'); }
+// Once a recording stops, the button is free again: earlier ones are transcribed alongside.
+let mainBusy=0;
+const mainIdle=()=>{if(!mainLive)statusEl.textContent=mainBusy?`${mainBusy} being written up, tap to speak again`:'tap to speak';};
 function listen(){
   if(mainLive)return;
-  mainLive=true;pendingFix=fixNow();
+  mainLive=true;pendingFix=fixNow();let counted=false;
   result.classList.remove('show');
   mainRec=recognize({
     onStart:()=>{shell.classList.add('listening');statusEl.textContent='listening — tap to stop';statusEl.classList.add('live');heard.textContent='';barsGo();},
-    onLive:t=>{statusEl.textContent=t;barsStop();},
-    onEnd:(t,err)=>{mainLive=false;shell.classList.remove('listening');statusEl.classList.remove('live');barsStop();
-      if(err==='not-allowed'||err==='service-not-allowed'){statusEl.textContent='mic blocked, allow it in the browser';return;}
-      if(err==='no-mic'){statusEl.textContent='no mic available here';return;}
-      if(err==='locked'){statusEl.textContent='app key missing, add it in settings';return;}
-      if(err==='transcribe'){statusEl.textContent='could not transcribe, tap to retry';return;}
-      if(t){statusEl.textContent='thinking...';route(t);} else {statusEl.textContent='tap to speak';}},
+    onLive:()=>{counted=true;mainBusy++;mainLive=false;shell.classList.remove('listening');statusEl.classList.remove('live');barsStop();mainIdle();},
+    onEnd:(t,err)=>{if(counted)mainBusy--;else{mainLive=false;shell.classList.remove('listening');statusEl.classList.remove('live');barsStop();}
+      if(err==='not-allowed'||err==='service-not-allowed'){mainLive||(statusEl.textContent='mic blocked, allow it in the browser');return;}
+      if(err==='no-mic'){mainLive||(statusEl.textContent='no mic available here');return;}
+      if(err==='locked'){mainLive||(statusEl.textContent='app key missing, add it in settings');return;}
+      if(err==='transcribe'){mainLive||(statusEl.textContent='could not transcribe, tap to retry');return;}
+      if(t){mainLive||(statusEl.textContent='thinking...');mainBusy++;Promise.resolve(route(t)).finally(()=>{mainBusy--;mainIdle();});} else mainIdle();},
     onLong:(blob,began)=>{mainLive=false;shell.classList.remove('listening');statusEl.classList.remove('live');barsStop();
-      statusEl.textContent='a conversation: writing it up...';ivUploadWeb(blob,began).then(ok=>{statusEl.textContent=ok?'tap to speak':'could not send it, tap to try again';});}
+      mainLive||(statusEl.textContent='a conversation: writing it up...');ivUploadWeb(blob,began).then(ok=>{mainLive||(statusEl.textContent=ok?'tap to speak':'could not send it, tap to try again');});}
   });
 }
 orb.addEventListener('click',()=>{ if(mainLive){try{mainRec.stop()}catch{}} else listen(); });
@@ -617,13 +619,13 @@ async function askClaudeDirect(text){
   if(!r.ok)throw new Error('ask '+r.status);const a=await r.json();ASKS=[a,...ASKS];LS.set('ob-asks',ASKS);renderClaude();return a;}
 async function route(text){
   if(FOR_CLAUDE.test(text)){try{const a=await askClaudeDirect(text.replace(FOR_CLAUDE,'').trim()||text);
-    statusEl.textContent=a.kind==='app'?'sent to Claude: it will show you a preview to approve':'sent to Claude';}catch{statusEl.textContent='could not reach Claude, tap to retry';}return;}
+    mainLive||(statusEl.textContent=a.kind==='app'?'sent to Claude: it will show you a preview to approve':'sent to Claude');}catch{mainLive||(statusEl.textContent='could not reach Claude, tap to retry');}return;}
   orb.classList.add('busy'); hint.style.display='none';
   try{
     const out=parseJSON(await ask([{role:'system',content:SYS},{role:'user',content:text}])) || {kind:'answer',answer:'Sorry, did not get that.'};
     handle(out,text);
   }catch(err){
-    statusEl.textContent='tap to speak';
+    mainLive||(statusEl.textContent='tap to speak');
     rLabel.textContent='could not reach Claude'; rBody.textContent=String(err.message||err);
     rActs.innerHTML=''; result.classList.add('show');
   }finally{ orb.classList.remove('busy'); }
@@ -673,7 +675,7 @@ function channelLink(c,ch,msg){
 function copyText(t){ try{navigator.clipboard&&navigator.clipboard.writeText(t);}catch{} }
 
 function handle(out,original){
-  statusEl.textContent='tap to speak';
+  mainLive||(statusEl.textContent='tap to speak');
   result.classList.add('show'); rActs.innerHTML='';
 
   if(out.kind==='capture'){
@@ -1301,18 +1303,20 @@ function hideLock(){lock.classList.remove('on');clearInterval(lkClockT);}
 
 let lkRec=null, lkLive=false;
 const TASKS_SYS=`The user speaks to a to-do app from their phone's lock screen. Pull out every task they mention. Return ONLY a raw JSON array, no markdown: [{"text":"short clean task","category":"fix"|"check"|"buy"|"do","due":"ISO 8601 date-time if they gave a time or day, else empty","place":"a place they named (home, the market), else empty","aisle":"for buy only, one of: ${AISLES.map(a=>a[0]).join(' | ')}, else empty","every":"days between repeats if they say it repeats (every day 1, every week 7, every month 30) or it is plainly a routine chore, else 0"}]. One item per separate task. Keep their meaning and any time, place or person they name. Today is ${new Date().toString()}. If there is no task, return [].`;
+// Status from an earlier recording never covers one in progress.
+const lkSay=s=>{if(!lkLive&&!intOn)lkStatus.textContent=s;};
 function lockRecord(){
   if(lkLive){try{lkRec.stop()}catch{};return;}
   if(intOn){showToast('Stop the interview first');return;}
-  lkLive=true;pendingFix=fixNow();lock.classList.add('rec');lkStatus.textContent='listening, tap to stop';
+  lkLive=true;pendingFix=fixNow();let counted=false;lock.classList.add('rec');lkStatus.textContent='listening, tap to stop';
   lkRec=recognize({
-    onLong:(blob,began)=>{lkLive=false;lock.classList.remove('rec');lkStatus.textContent='a conversation: writing it up...';
-      ivUploadWeb(blob,began).then(ok=>{lkStatus.textContent=ok?'written up, it is in the app':'could not send it';if(ok)hideLock();});},
-    onLive:t=>{lkStatus.textContent=t;lock.classList.remove('rec');lock.classList.add('busy');},
+    onLong:(blob,began)=>{lkLive=false;lock.classList.remove('rec');lkSay('a conversation: writing it up...');
+      ivUploadWeb(blob,began).then(ok=>{lkSay(ok?'written up, it is in the app':'could not send it');if(ok&&!lkLive&&!intOn)hideLock();});},
+    onLive:()=>{counted=true;lkLive=false;lock.classList.remove('rec');lkSay('writing it up, tap to speak again');},
     onEnd:(t,err)=>{
-      lkLive=false;lock.classList.remove('rec');
+      if(!counted){lkLive=false;lock.classList.remove('rec');}
       if(err||!t){lock.classList.remove('busy');
-        lkStatus.textContent=err==='locked'?'app key missing':err==='transcribe'?'could not transcribe, tap to try again':err?'microphone blocked':'heard nothing, tap to try again';return;}
+        lkSay(err==='locked'?'app key missing':err==='transcribe'?'could not transcribe, tap to try again':err?'microphone blocked':'heard nothing, tap to try again');return;}
       lockText(t);
     }
   });
@@ -1321,9 +1325,9 @@ function lockRecord(){
 async function lockText(t){
       lock.classList.add('busy');
       if(FOR_CLAUDE.test(t)){lock.classList.remove('busy');
-        try{const a=await askClaudeDirect(t.replace(FOR_CLAUDE,'').trim()||t);lkStatus.textContent=a.kind==='app'?'sent to Claude, a preview will come to approve':'sent to Claude';}
-        catch{lkStatus.textContent='could not reach Claude, tap to try again';}return;}
-      lkStatus.textContent='adding...';
+        try{const a=await askClaudeDirect(t.replace(FOR_CLAUDE,'').trim()||t);lkSay(a.kind==='app'?'sent to Claude, a preview will come to approve':'sent to Claude');}
+        catch{lkSay('could not reach Claude, tap to try again');}return;}
+      lkSay('adding...');
       let arr=null;
       try{arr=parseJSON(await ask([{role:'system',content:TASKS_SYS},{role:'user',content:t}]));}catch{}
       if(!Array.isArray(arr)) arr=[{text:t,category:'do'}]; // brain unreachable: keep the words as one task
@@ -1331,33 +1335,33 @@ async function lockText(t){
       const now=Date.now();
       arr.slice().reverse().forEach((x,i)=>{const t={id:now+i,text:x.text,cat:CAT[x.category]?x.category:'do',done:false,ts:now,subs:[],due:x.due||'',place:x.place||''};const ev=Number(x.every)||0;if(t.cat==='buy'&&x.aisle&&AISLES.some(([a])=>a===x.aisle))t.aisle=x.aisle;if(ev){t.every=ev;t.everyBy='guess';}if(absorb(t))return;notes.unshift(t);noteWhere(now+i,'said',pendingFix);});
       save();renderNotes();lock.classList.remove('busy');
-      lkStatus.textContent=arr.length?'added '+arr.length+(arr.length>1?' tasks':' task'):'no task heard, tap to try again';
+      lkSay(arr.length?'added '+arr.length+(arr.length>1?' tasks':' task'):'no task heard, tap to try again');
 }
 
 let intOn=false, intStart=0, intT=null, intWeb=null;
 function intTick(){const s=Math.floor((Date.now()-intStart)/1000);
-  lkStatus.textContent='listening '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0')+(s>=LONG_S?', a conversation':'')+', tap to stop';}
+  lkStatus.textContent=('listening '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0')+(s>=LONG_S?', a conversation':'')+', tap to stop');}
 function intUI(on){intOn=on;lock.classList.toggle('rec',on);clearInterval(intT);
   if(on){intTick();intT=setInterval(intTick,1000);}}
 // The phone app reports its recorder state here: 'on' | 'saved' | 'error'.
 window.obInterview=(state,startedAt,info)=>{
   if(state==='on'){intStart=startedAt||Date.now();intUI(true);return;}
   const short=Date.now()-intStart<LONG_S*1000;intUI(false);
-  if(state!=='saved'||!info){lkStatus.textContent='could not record: '+(info||'unknown');return;}
+  if(state!=='saved'||!info){lkSay('could not record: '+(info||'unknown'));return;}
   if(short&&NATIVE.readInterview){nativeShort(info);return;}
-  lkStatus.textContent='a conversation: writing it up...';ivProcess(info,Date.now(),true);openIv(info,false);
+  lkSay('a conversation: writing it up...');ivProcess(info,Date.now(),true);openIv(info,false);
 };
 // A short recording from the phone's recorder becomes tasks, then the audio is deleted.
 async function nativeShort(name){const id=ivId(name);IVS[id]={status:'task'};LS.set('ob-ivs',IVS);
-  lock.classList.add('busy');lkStatus.textContent='transcribing...';
+  lock.classList.add('busy');lkSay('transcribing...');
   let t='';try{const r=await fetch('/api/transcribe',{method:'POST',headers:obHeaders(),body:JSON.stringify({audio:NATIVE.readInterview(name),mimeType:'audio/mp4'})});
     if(r.ok)t=((await r.json()).text||'').trim();}catch{}
-  if(!t){lock.classList.remove('busy');delete IVS[id];LS.set('ob-ivs',IVS);lkStatus.textContent='could not transcribe; the recording is kept in the app';return;}
+  if(!t){lock.classList.remove('busy');delete IVS[id];LS.set('ob-ivs',IVS);lkSay('could not transcribe, the recording is kept in the app');return;}
   NATIVE.deleteInterview(name);delete IVS[id];LS.set('ob-ivs',IVS);lockText(t);}
 
 // One button: tap to speak, tap to stop. Short is tasks, long is a conversation written up.
 $('#lk-orb').onclick=()=>{
-  if(NATIVE&&NATIVE.readInterview&&!lkLive){if(lock.classList.contains('busy'))return;intOn?NATIVE.stopInterview():NATIVE.startInterview();return;}
+  if(NATIVE&&NATIVE.readInterview&&!lkLive){intOn?NATIVE.stopInterview():NATIVE.startInterview();return;}
   lockRecord();
 };
 
