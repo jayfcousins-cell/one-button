@@ -245,7 +245,7 @@ $('#mail').innerHTML=`<div class="tag">${esc(D.update.date)} . from One Button, 
      in the background (the same steps as the Weave front door); each one works once, for the
      person it names. The server hands over the space only to a member, held parts removed. */
 // The Weave front door only returns to a plain path, so the space is remembered for the way back.
-const Q=new URLSearchParams(location.search), INVITE=Q.get('invite');
+const Q=new URLSearchParams(location.search), INVITE=Q.get('invite'), DEV=Q.get('d');
 let SLUG=Q.get('s');
 try{if(SLUG)localStorage.setItem('ob.space.last',SLUG);else if(location.origin==='https://canopy-website-ef7a8.web.app')SLUG=localStorage.getItem('ob.space.last');}catch(e){}
 // The same file runs on One Button's site (Jay's own view, in the app) and on Canopy's, where the
@@ -330,11 +330,22 @@ function weave(){
       }).catch(e=>gate('This link could not open the space',String((e&&e.message)||e)+'. Try reloading.'));
     }
 
+    // A link from Jay for someone already in: it signs in this device by itself, once. A device
+    // already signed in opens without using it up.
+    function claim(){
+      gate('Opening your space','Signing you in on this device.');
+      post('claim',{slug:SLUG,d:DEV}).then(c=>{stripInvite();
+        return W.useAccountCode(c.name,c.code,{device:W.describeDevice()}).then(r=>{if(!r||!r.ok)throw new Error((r&&r.reason)||'sign-in failed');return enter(c.name);});})
+        .catch(e=>{const why=String((e&&e.message)||e);stripInvite();
+          if(/used|bad link/.test(why))gate('This link has been used','Each link opens the space on one phone or computer. Ask Jay for a new one.');
+          else gate('The space did not open just now','Ask Jay for a new link. If it keeps happening, tell Jay this: '+why+'.');});
+    }
+    const next=()=>DEV?claim():INVITE?join():signIn();
     W.check(SLUG).then(r=>{
       if(r&&r.ok)return INVITE?enter(W.me().agentName):open();
       const mine=W.me();
-      if(mine&&mine.agentName)return W.login({name:mine.agentName,requireCommunity:SLUG}).then(x=>x&&x.ok?open():INVITE?join():signIn(),()=>INVITE?join():signIn());
-      return INVITE?join():signIn();
+      if(mine&&mine.agentName)return W.login({name:mine.agentName,requireCommunity:SLUG}).then(x=>x&&x.ok?open():next(),next);
+      return next();
     }).catch(()=>gate('Could not reach the sign-in service','Check your connection and reload the page.'));
   };
   document.head.appendChild(s);

@@ -1661,7 +1661,8 @@ async function spSendPerson(name,interview,btn){
   if(btn)btn.disabled=false;
 }
 function spShare(name,d){
-  ivShareText(d.joined?`Something new in our shared space: ${d.link}`
+  ivShareText(d.joined?`Our shared space: ${d.link}
+Tap it on the phone or computer you want to use and you are in. Each link works on one device.`
     :`Hi ${name}, I've set up a private space for our conversations: the notes and transcripts, the projects growing from them, and next steps. Tap the link and press Join. You'll be shown an account code once: save it, it signs you in on your other devices. ${d.link}`);
 }
 // Someone who joined but has no code (lost, or never saw it): a fresh one, ready to send them.
