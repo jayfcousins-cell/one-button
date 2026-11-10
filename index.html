@@ -677,6 +677,9 @@ async function toClaude(t){
   return '';}
 async function route(text){
   {const said=await toClaude(text);if(said){mainLive||(statusEl.textContent=said);return;}}
+  {const r=rhythmFrom(text);if(r){const n=addRoutine(r.text,r.every);mainLive||(statusEl.textContent='tap to speak');
+    result.classList.add('show');rActs.innerHTML='';rLabel.textContent='added to your rhythm . '+everyWord(n.every);rBody.textContent=n.text;
+    addAct('Open','go',()=>openNote(n.id));return;}}
   orb.classList.add('busy'); hint.style.display='none';
   try{
     const out=parseJSON(await ask([{role:'system',content:SYS},{role:'user',content:text}])) || {kind:'answer',answer:'Sorry, did not get that.'};
@@ -1158,8 +1161,21 @@ function renderRhythm(){const box=$('#rhythm-list');if(!box)return;
   box.querySelectorAll('[data-rh]').forEach(x=>x.onclick=()=>{closeSheets();openNote(routines()[+x.dataset.rh].id);});
   box.querySelectorAll('[data-rh-del]').forEach(b=>b.onclick=()=>{const n=routines()[+b.dataset.rhDel];n.deleted=true;save();renderRhythm();renderNotes();});
   $('#rhythm-ideas').querySelectorAll('[data-rh-add]').forEach(b=>b.onclick=()=>addRoutine(b.dataset.rhAdd,1));}
-function addRoutine(text,every){text=String(text||'').trim();if(!text)return;const now=Date.now();
-  notes.unshift({id:now,text,cat:'do',done:false,ts:now,subs:[],due:'',place:'',routine:true,every,everyBy:'you'});save();renderNotes();renderRhythm();}
+function addRoutine(text,every){text=String(text||'').trim();if(!text)return;const now=Date.now(),k=taskKey(text);
+  // Already on the list: it moves into the rhythm rather than making a second copy.
+  let n=k&&notes.find(x=>!x.deleted&&taskKey(x.text)===k);
+  if(n){Object.assign(n,{routine:true,every,everyBy:'you',done:false,ts:now});delete n.doneAt;}
+  else notes.unshift(n={id:now,text,cat:'do',done:false,ts:now,subs:[],due:'',place:'',routine:true,every,everyBy:'you'});
+  save();renderNotes();renderRhythm();return n;}
+const everyWord=e=>e===1?'daily':e===7?'weekly':e===30?'monthly':'every '+e+' days';
+/* "Add yoga to my rhythm", said to either button, goes into My rhythm: daily unless they say
+ * how often ("every week"). Returns {text,every}, or null if it is not for the rhythm. */
+function rhythmFrom(t){if(!/\b(add|put)\b.*\brhythms?\b/i.test(t))return null;
+  const d=t.match(/\bevery (\d+) days?\b/i);
+  const every=d?Math.max(1,+d[1]):/\b(every|each|once a) week\b|\bweekly\b/i.test(t)?7:/\b(every|each|once a) month\b|\bmonthly\b/i.test(t)?30:1;
+  const text=t.replace(/[.!?,]+/g,' ').replace(/\b(every|each|once a) (day|week|month)\b|\bevery \d+ days?\b|\b(daily|weekly|monthly)\b/ig,' ')
+    .replace(/\b(to|in|into|on|onto) (my|the)\s+rhythms?\b/i,' ').replace(/^\s*(please )?(add|put)\s+/i,'').replace(/^\s*(a|an|the|some)\s+/i,'').replace(/\s+/g,' ').trim();
+  return text?{text:text[0].toUpperCase()+text.slice(1),every}:null;}
 /* Repeating tasks. A ticked-off task with "every" days comes back at the start of the day it is
  * due again (with its time of day moved along, so its alarm comes back too). Every tick is kept
  * in hist, so a task said again and again ("buy eggs") learns its own rhythm. */
@@ -1475,6 +1491,7 @@ function lockRecord(){
 async function lockText(t){
       lock.classList.add('busy');
       {const said=await toClaude(t);if(said){lock.classList.remove('busy');lkSay(said);return;}}
+      {const r=rhythmFrom(t);if(r){const n=addRoutine(r.text,r.every);lock.classList.remove('busy');lkSay('added to your rhythm, '+everyWord(n.every));return;}}
       lkSay('adding...');
       let arr=null;
       try{arr=parseJSON(await ask([{role:'system',content:TASKS_SYS},{role:'user',content:t}]));}catch{}
