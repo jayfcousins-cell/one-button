@@ -1008,14 +1008,34 @@ function vaultHtml(p){const v=p&&p.vault;if(!v)return '';
     +(v.status?`<p class="note">${escapeHtml(v.status)}</p>`:'')
     +(v.tasks||[]).slice(0,8).map(t=>`<div class="iv-li">${escapeHtml(vaultTxt(t))}</div>`).join('')
     +(v.notes||[]).slice(0,3).map(n=>`<p class="note" style="white-space:pre-wrap">${escapeHtml(vaultTxt(n))}</p>`).join('');}
-// Inside an open project, on the main screen and the lock screen: what the vault says, what Claude
-// is doing or found for it, and a button to give Claude a task there by voice.
-function projExtra(p,box){let as='';try{as=ASKS.filter(a=>a.project===p.id&&a.kind!=='app').slice(0,2).map(askCard).join('');}catch{}
-  box.insertAdjacentHTML('beforeend',vaultHtml(p)+as);
-  const b=document.createElement('button');b.className='tbtn';b.textContent='Give Claude a task';
-  const st=document.createElement('div');st.className='note';
-  b.onclick=()=>speakOnce(st,async t=>{st.textContent='sending...';try{await speakToProject(p,t);}catch{st.textContent='Could not send it';}});
-  box.append(b,st);}
+// Inside an open project, on the main screen and the lock screen: its open tasks (the lock screen
+// lists its own), what the vault says, what Claude is doing for it, and one button to do them all.
+function projExtra(p,box,withTasks){let as='';try{as=ASKS.filter(a=>a.project===p.id&&a.kind!=='app'&&a.status!=='done').slice(0,2).map(askCard).join('');}catch{}
+  const ts=withTasks?tasksOf(p).filter(n=>!n.done&&!n.deleted):[];
+  box.insertAdjacentHTML('beforeend',ts.map((n,i)=>{const l=taskAskLabel(ASKS.find(x=>x.id===n.ask));
+      return `<div class="iv-li" data-pt="${i}" role="button" tabindex="0">${escapeHtml(n.text)}${l?` <small>. ${escapeHtml(l)}</small>`:''}</div>`;}).join('')+vaultHtml(p)+as);
+  box.querySelectorAll('[data-pt]').forEach(x=>x.onclick=()=>openNote(ts[+x.dataset.pt].id));
+  const b=document.createElement('button');b.className='tbtn';b.textContent='Do these';
+  b.onclick=()=>{b.disabled=true;doProject(p);};
+  box.append(b);}
+// "Do these": every open task in the project goes to Claude at once, pointed at the vault notes.
+// Each task then shows Claude is on it, and what Claude found once it answers.
+async function doProject(p){const f=p.vault&&p.vault.folder;
+  const ts=tasksOf(p).filter(n=>{const a=ASKS.find(x=>x.id===n.ask);return !n.done&&!n.deleted&&!(a&&a.status!=='done');});
+  const vs=((p.vault&&p.vault.tasks)||[]).map(vaultTxt).filter(Boolean);
+  if(!ts.length&&!vs.length){showToast('Nothing open here');renderNotes();return;}
+  const t=`These are the open tasks for my project "${p.name}". Please work through them: make a short plan for each and do whatever research or drafting you can.\n`
+    +[...ts.map(n=>n.text+(n.note?` (what I know so far: ${n.note})`:'')),...vs].map(x=>'- '+x).join('\n')
+    +`\n\nVault: read my vault notes and dashboard for this project${f?' in '+f:''} first.`;
+  try{const a=await askClaudeDirect(t,{project:p.id});ts.forEach(n=>n.ask=a.id);save();showToast('Sent to Claude');}
+  catch{showToast('Could not reach Claude, try again');}
+  renderNotes();}
+// A long press on a project's name opens the full project page.
+function holdToOpen(el,p,before){let tm=0,held=false;
+  el.addEventListener('pointerdown',()=>{held=false;tm=setTimeout(()=>{held=true;if(before)before();openProject(p);},600);});
+  ['pointerup','pointerleave','pointercancel'].forEach(e=>el.addEventListener(e,()=>clearTimeout(tm)));
+  el.addEventListener('click',e=>{if(held){e.stopImmediatePropagation();held=false;}},true);
+  el.oncontextmenu=e=>e.preventDefault();}
 const kidsOf=id=>PROJ.projects.filter(p=>projLive(p)&&p.parent===id);
 // A project and everything under it, so a project is never placed inside its own subproject.
 const familyOf=id=>{const out=new Set([id]);let grew=true;while(grew){grew=false;for(const p of PROJ.projects)if(p.parent&&out.has(p.parent)&&!out.has(p.id)){out.add(p.id);grew=true;}}return out;};
@@ -1035,8 +1055,8 @@ function renderProjBoard(){const box=$('#proj-main');if(!box)return;
       :'<p class="note">No projects yet. Tap Add or sort.</p>')
     +'<div class="pb-cat" style="margin-top:26px">Tasks</div>';
   box.querySelectorAll('[data-pb]').forEach(x=>x.onclick=()=>{po[x.dataset.pb]=!po[x.dataset.pb];LS.set('ob-mainproj',po);renderProjBoard();});
-  box.querySelectorAll('[data-pbb]').forEach(x=>{const p=PROJ.projects.find(q=>q.id===x.dataset.pbb);projExtra(p,x);
-    const o=document.createElement('button');o.className='tbtn';o.textContent='Open the project';o.onclick=()=>openProject(p);x.appendChild(o);});
+  box.querySelectorAll('[data-pb]').forEach(x=>holdToOpen(x,PROJ.projects.find(q=>q.id===x.dataset.pb)));
+  box.querySelectorAll('[data-pbb]').forEach(x=>projExtra(PROJ.projects.find(q=>q.id===x.dataset.pbb),x,true));
   $('#pb-all').onclick=()=>$('#open-proj').click();}
 function renderProj(){const box=$('#proj-list');
   const live=PROJ.projects.filter(projLive),rest=PROJ.projects.filter(p=>!projLive(p));
@@ -1484,7 +1504,7 @@ function renderLock(){
       row.innerHTML=`<div class="lk-text">${escapeHtml(p.name)}<div style="font-size:13px;opacity:.75;margin-top:2px">${escapeHtml(p.status)}${open?' . '+open+' to do':''}${b?' . '+escapeHtml(STAGE_LABEL[askStage(b)]):''}</div></div>`;
       const po=LS.get('ob-lockproj',{});row.setAttribute('aria-expanded',!!po[p.id]);if(po[p.id])row.classList.add('open');
       row.querySelector('.lk-text').insertAdjacentHTML('afterend','<svg class="lk-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>');
-      row.onclick=()=>{po[p.id]=!po[p.id];LS.set('ob-lockproj',po);renderLock();};lkList.appendChild(row);
+      row.onclick=()=>{po[p.id]=!po[p.id];LS.set('ob-lockproj',po);renderLock();};if(p.id)holdToOpen(row,p,hideLock);lkList.appendChild(row);
       if(po[p.id])lkList.appendChild(lockProjectBody(p));}
     for(const n of group){
       const row=document.createElement('div');row.className='lk-item';
@@ -1515,9 +1535,8 @@ function lockProjectBody(p,depth=0){const box=document.createElement('div');box.
   const po=LS.get('ob-lockproj',{});
   for(const k of kids){const row=document.createElement('button');row.className='lk-item lk-proj'+(po[k.id]?' open':'');row.setAttribute('aria-expanded',!!po[k.id]);
     const c=openCount(k);row.innerHTML=`<div class="lk-text">${escapeHtml(k.name)}<div style="font-size:13px;opacity:.75;margin-top:2px">${c?c+' to do':'nothing open'}</div></div><svg class="lk-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
-    row.onclick=()=>{po[k.id]=!po[k.id];LS.set('ob-lockproj',po);renderLock();};box.appendChild(row);
+    row.onclick=()=>{po[k.id]=!po[k.id];LS.set('ob-lockproj',po);renderLock();};holdToOpen(row,k,hideLock);box.appendChild(row);
     if(po[k.id])box.appendChild(lockProjectBody(k,depth+1));}
-  if(p.id&&!depth){const o=document.createElement('button');o.className='lk-act';o.textContent='Open the project';o.onclick=()=>{hideLock();openProject(p);};box.appendChild(o);}
   return box;}
 function showLock(){stopSaver();closeSheets();lock.classList.add('on');lockClock();loadEvents();
   clearInterval(lkClockT);lkClockT=setInterval(lockClock,15000);revive();renderLock();}
