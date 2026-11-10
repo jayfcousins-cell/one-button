@@ -1798,7 +1798,7 @@ function askStage(a){if(a.ship==='live')return 'live';if(a.ship==='declined')ret
   if(a.preview&&a.ship==='waiting')return 'preview';return a.stage||(a.status==='done'?'done':'waiting');}
 // "Waiting" says whether the laptop is awake: it checks in every 20 seconds while it is.
 Object.defineProperty(STAGE_LABEL,'waiting',{get(){const ago=Date.now()-HELPER_SEEN;
-  return !HELPER_SEEN||ago<5*60e3?'Waiting for the laptop':'Laptop asleep since '+new Date(HELPER_SEEN).toTimeString().slice(0,5)+': wake it and this starts within a minute';}});
+  return !HELPER_SEEN||ago<5*60e3?'Waiting for the laptop':'Laptop not checked in since '+new Date(HELPER_SEEN).toTimeString().slice(0,5)+': wake it or check it is online, and this starts within a minute';}});
 window.OB_BUILDS=true; // set once the build code below has loaded; the lock screen waits for it
 const askActive=a=>a.kind==='app'&&!['live','declined','done'].includes(askStage(a));
 function stepper(a){const s=askStage(a),i=STEPS.indexOf({checking:'building',publishing:'building','going-live':'live',waiting:'planning',picked:'planning'}[s]||s);
