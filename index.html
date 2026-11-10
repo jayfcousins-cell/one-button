@@ -200,7 +200,23 @@
   .chk{display:flex;gap:10px;align-items:center;font-size:15px;margin:4px 0 16px;cursor:pointer}
   .chk input{width:20px;height:20px;accent-color:var(--ink)}
   .upd{display:block;text-align:center;margin:28px 0 4px;padding:12px;font-family:'IBM Plex Mono';font-size:11px;letter-spacing:1px;color:var(--muted);text-decoration:none;opacity:.6}
-  .sheet.iv-card{z-index:27}
+  .sheet.iv-card,#sheet-plan{z-index:27}
+  .lk-ready{margin:4px 0 14px;padding:12px;border:2px solid var(--spark)}
+  .lk-ready-t{font:700 13px "IBM Plex Mono",monospace;letter-spacing:1px;text-transform:uppercase;color:var(--spark);margin-bottom:6px}
+  .lk-pbody{padding:4px 0 10px 22px;border-bottom:1px solid rgba(255,255,255,.12)}
+  .lk-proj{display:flex;align-items:center;gap:10px}
+  .lk-proj .lk-chev{flex:none;margin-left:auto;transition:transform .2s}
+  .lk-proj.open .lk-chev{transform:rotate(180deg)}
+  .lock .bl-card{background:transparent;border-color:rgba(255,255,255,.25);color:#FFFFFF}
+  .lock .iv-tag,.lock .bl-log,.lock .note,.lock .iv-ans{color:rgba(255,255,255,.75)}
+  .lock .bl-step{border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.6)}
+  .lock .bl-step.past{background:rgba(255,255,255,.18);color:#FFFFFF}
+  .lock .bl-step.now{background:var(--spark);border-color:var(--spark);color:#1A1A1A}
+  .lock .bl-more{color:var(--spark)}
+  .lock .tbtn,.lk-act{background:transparent;color:#FFFFFF;border:1px solid rgba(255,255,255,.6);min-height:44px;padding:0 14px;font:600 14px "Inter",sans-serif;cursor:pointer;margin:4px 6px 4px 0}
+  .lk-act{margin-top:10px}
+  @media (prefers-reduced-motion:no-preference){.lk-ready{animation:lkPulse 2.4s ease-in-out infinite}}
+  @keyframes lkPulse{50%{border-color:rgba(255,255,255,.35)}}
   .iv-meta{font-size:12.5px;color:var(--muted);margin:0 0 12px}
   .iv-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
   .iv-row .tbtn,.iv-row .save{flex:1;margin:0}
@@ -1367,10 +1383,15 @@ function renderLock(){
   if(!lock.classList.contains('on'))return;
   const items=notes.filter(n=>!n.done&&!n.deleted&&onList(n));
   $('#lk-count').textContent=items.length?items.length+' open':'';
-  if(!items.length){lkList.innerHTML='<div class="lk-empty">Nothing open. Tap the button and say what needs doing.</div>';return;}
+  const lkPrs=lockProjects(),lkNeeds=!window.OB_BUILDS?[]:ASKS.filter(a=>a.kind==='app'&&['plan','preview'].includes(askStage(a)));
+  if(!items.length&&!lkPrs.length){lkList.innerHTML='<div class="lk-empty">Nothing open. Tap the button and say what needs doing.</div>';return;}
   if(!LS.get('ob-lockfull',true)){lkList.innerHTML=`<div class="lk-empty">${items.length} ${items.length>1?'tasks':'task'} open. Open One Button to see them.</div>`;return;}
   // One closed row per kind of task (Buy, Fix, Check, Do); tap to open. Open rows are remembered.
   lkList.innerHTML='';
+  // Anything waiting on Jay comes first, whatever project it is in.
+  if(lkNeeds.length){const box=document.createElement('div');box.className='lk-ready';
+    box.innerHTML=lkNeeds.map(a=>`<div class="lk-ready-t">${askStage(a)==='plan'?'Plan ready for you':'Ready to try'}</div>`+askCard(a)).join('');
+    wireAskCards(box);lkList.appendChild(box);}
   const open=LS.get('ob-lockopen',{});
   // First the daily rhythm, then whatever belongs to the place the phone is at, then the kinds.
   const here=HERE?items.filter(n=>!n.routine&&placeOf(n)&&placeOf(n).id===HERE.id):[];
@@ -1381,7 +1402,7 @@ function renderLock(){
   const GROUPS={projects:{label:'Projects',c:'var(--spark)',items:[]},today:{label:'Today',c:'#FFFFFF',items:dueToday,events:evToday},rhythm:{label:'My rhythm',c:'var(--spark)',items:items.filter(n=>n.routine)},here:{label:HERE?'Here: '+HERE.name:'',c:'#1A1A1A',items:here}};
   for(const key of ['today','projects','rhythm','here','buy','fix','check','do']){
     let group=GROUPS[key]?GROUPS[key].items:items.filter(n=>!firsts.has(n)&&(CAT[n.cat]?n.cat:'do')===key);if(key==='buy')group=group.slice().sort((a,b)=>(shopOf(a).shop||'~').localeCompare(shopOf(b).shop||'~'));
-    const evs=key==='today'?evToday:[],prs=key==='projects'?PROJ.projects.filter(p=>p.main&&projLive(p)):[];
+    const evs=key==='today'?evToday:[],prs=key==='projects'?lkPrs:[];
     if(!group.length&&!evs.length&&!prs.length) continue;
     const cat=GROUPS[key]||CAT[key], isOpen=key in open?!!open[key]:!!GROUPS[key];
     const head=document.createElement('button');
@@ -1395,7 +1416,10 @@ function renderLock(){
       lkList.appendChild(row);}
     for(const p of prs){const row=document.createElement('button');row.className='lk-item lk-proj';const open=tasksOf(p).filter(n=>!n.done).length,b=ASKS.find(a=>a.project===p.id&&askActive(a));
       row.innerHTML=`<div class="lk-text">${escapeHtml(p.name)}<div style="font-size:13px;opacity:.75;margin-top:2px">${escapeHtml(p.status)}${open?' . '+open+' to do':''}${b?' . '+escapeHtml(STAGE_LABEL[askStage(b)]):''}</div></div>`;
-      row.onclick=()=>{hideLock();openProject(p);};lkList.appendChild(row);}
+      const po=LS.get('ob-lockproj',{});row.setAttribute('aria-expanded',!!po[p.id]);if(po[p.id])row.classList.add('open');
+      row.querySelector('.lk-text').insertAdjacentHTML('afterend','<svg class="lk-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>');
+      row.onclick=()=>{po[p.id]=!po[p.id];LS.set('ob-lockproj',po);renderLock();};lkList.appendChild(row);
+      if(po[p.id])lkList.appendChild(lockProjectBody(p));}
     for(const n of group){
       const row=document.createElement('div');row.className='lk-item';
       row.innerHTML=`<div class="lk-text">${escapeHtml(n.text)}${(whenOf(n)||(n.cat==='buy'&&shopOf(n).shop))?`<div style="font-size:13px;opacity:.75;margin-top:2px">${whenOf(n)||escapeHtml(shopOf(n).shop)}</div>`:''}</div><button class="lk-tick" aria-label="Mark done">${ICON_TICK}</button>`;
@@ -1404,6 +1428,23 @@ function renderLock(){
     }
   }
 }
+// The projects on the lock screen: the ones ticked for the main screen, and any Claude is working on.
+function lockProjects(){if(!window.OB_BUILDS)return PROJ.projects.filter(p=>projLive(p)&&p.main);const busy=new Set(ASKS.filter(askActive).map(a=>a.project));
+  const out=PROJ.projects.filter(p=>projLive(p)&&(p.main||busy.has(p.id)));
+  // A change to the app with no project yet still shows, under One Button.
+  if(ASKS.some(a=>askActive(a)&&!a.project)&&!out.some(isBuild))out.unshift({id:'',name:'One Button',status:'Active',build:'one-button'});
+  return out;}
+function lockProjectBody(p){const box=document.createElement('div');box.className='lk-pbody';
+  const ts=p.id?tasksOf(p).filter(n=>!n.done&&!n.deleted):[];
+  const bs=ASKS.filter(a=>a.kind==='app'&&(a.project===p.id||(!a.project&&isBuild(p)))&&(askActive(a)||(askStage(a)==='live'&&!SEEN.includes(a.id)))).slice(0,3);
+  box.innerHTML=bs.map(askCard).join('')
+    +ts.map((n,i)=>`<div class="lk-item"><div class="lk-text">${escapeHtml(n.text)}${whenOf(n)?`<div style="font-size:13px;opacity:.75;margin-top:2px">${whenOf(n)}</div>`:''}</div><button class="lk-tick" data-lt="${i}" aria-label="Mark done">${ICON_TICK}</button></div>`).join('')
+    +(!bs.length&&!ts.length?'<div class="lk-empty" style="padding:10px 0">Nothing open here.</div>':'')
+    +(p.id?`<button class="lk-act" data-lopen>Open the project</button>`:'');
+  wireAskCards(box);
+  box.querySelectorAll('[data-lt]').forEach(b=>b.onclick=()=>{const n=ts[+b.dataset.lt];tick(n);noteWhere(n.id,'done',fixNow());save();setTimeout(renderNotes,220);});
+  const o=box.querySelector('[data-lopen]');if(o)o.onclick=()=>{hideLock();openProject(p);};
+  return box;}
 function showLock(){stopSaver();closeSheets();lock.classList.add('on');lockClock();loadEvents();
   clearInterval(lkClockT);lkClockT=setInterval(lockClock,15000);revive();renderLock();}
 function hideLock(){lock.classList.remove('on');clearInterval(lkClockT);}
@@ -1510,7 +1551,14 @@ async function ivRefresh(){
       if(mine.status==='working'&&iv.status!=='done'&&iv.status!=='error')continue;
       IVS[iv.id]={...mine,...iv};}
     const was=new Set(ASKS.filter(a=>a.status==='done').map(a=>a.id));
-    ASKS=d.asks||[]; LS.set('ob-ivs',IVS); LS.set('ob-asks',ASKS); ivAuto(); fileByPerson();
+    if(d.helperSeen){HELPER_SEEN=d.helperSeen;LS.set('ob-helper-seen',HELPER_SEEN);}
+    // When Claude reaches a step that needs Jay, the phone buzzes and says so.
+    const before=Object.fromEntries(ASKS.map(a=>[a.id,askStage(a)]));
+    ASKS=d.asks||[];
+    for(const a of ASKS){const s=askStage(a);if(a.kind!=='app'||!(a.id in before)||before[a.id]===s)continue;
+      const say={plan:'Plan ready for you',preview:'Ready to try',live:'Live now',failed:'A build stopped'}[s];
+      if(say){showToast(say+': '+askWords(a).slice(0,50));try{navigator.vibrate&&navigator.vibrate([90,70,90]);}catch{}}}
+    LS.set('ob-ivs',IVS); LS.set('ob-asks',ASKS); ivAuto(); fileByPerson();
     if(ASKS.some(a=>a.status==='done'&&!was.has(a.id))){showToast('Claude answered');try{navigator.vibrate&&navigator.vibrate(80);}catch{}}
     renderClaude();
     if($('#sheet-ivs').classList.contains('open'))renderInterviews();
@@ -1742,11 +1790,16 @@ function renderClaude(){
  * what it is doing as it goes; try the preview, comment on it by voice, or approve it to go live.
  * One Button is the first project built this way; other projects get answers, not builds, for now. */
 const isBuild=p=>!!p&&(p.build==='one-button'||p.seed==='one-button'||/^(?:one|1)[ -]?button( app)?$/i.test(p.name||''));
+let HELPER_SEEN=LS.get('ob-helper-seen',0);
 const STAGE_LABEL={waiting:'Waiting for the laptop',picked:'Picked up',planning:'Making a plan',plan:'Plan ready for you',building:'Building',checking:'Checking',
   publishing:'Publishing the preview',preview:'Ready to try','going-live':'Going live',live:'Live',failed:'Stopped',done:'Answered',declined:'Left as it was'};
 const STEPS=['planning','plan','building','preview','live'],STEP_NAME={planning:'Plan',plan:'You',building:'Build',preview:'Try',live:'Live'};
 function askStage(a){if(a.ship==='live')return 'live';if(a.ship==='declined')return 'declined';if(a.ship==='approved')return 'going-live';
   if(a.preview&&a.ship==='waiting')return 'preview';return a.stage||(a.status==='done'?'done':'waiting');}
+// "Waiting" says whether the laptop is awake: it checks in every 20 seconds while it is.
+Object.defineProperty(STAGE_LABEL,'waiting',{get(){const ago=Date.now()-HELPER_SEEN;
+  return !HELPER_SEEN||ago<5*60e3?'Waiting for the laptop':'Laptop asleep since '+new Date(HELPER_SEEN).toTimeString().slice(0,5)+': wake it and this starts within a minute';}});
+window.OB_BUILDS=true; // set once the build code below has loaded; the lock screen waits for it
 const askActive=a=>a.kind==='app'&&!['live','declined','done'].includes(askStage(a));
 function stepper(a){const s=askStage(a),i=STEPS.indexOf({checking:'building',publishing:'building','going-live':'live',waiting:'planning',picked:'planning'}[s]||s);
   return `<div class="bl-steps">${STEPS.map((x,j)=>`<span class="bl-step${j<i?' past':j===i?' now':''}">${STEP_NAME[x]}</span>`).join('')}</div>`;}
@@ -1806,6 +1859,7 @@ function renderBuilds(){const box=$('#build-strip');
   if(box){const act=ASKS.filter(a=>askActive(a)||(a.kind==='app'&&askStage(a)==='live'&&!SEEN.includes(a.id)&&Date.now()-(a.shipped||0)<3*864e5)).slice(0,3);
     box.innerHTML=act.map(askCard).join('');wireAskCards(box);}
   if($('#sheet-p1').classList.contains('open'))renderP1();
+  renderProjBoard();
   if($('#sheet-plan').classList.contains('open')&&PLAN_ASK){const a=ASKS.find(x=>x.id===PLAN_ASK.id);if(a&&$('#pl-title').textContent!=='Claude\'s plan')openPlan(a,true);}
   renderLock();}
 /* A new release of the phone app shows "Update available" on the main screen until tapped. The
