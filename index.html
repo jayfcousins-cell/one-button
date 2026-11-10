@@ -45,6 +45,7 @@
   .pb-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;width:100%;min-height:48px;padding:10px 0;border:0;border-bottom:1px solid var(--line);background:none;color:inherit;text-align:left;font:600 16px "Inter",sans-serif;cursor:pointer}
   .pb-row small{font:400 12px "IBM Plex Mono",monospace;color:var(--muted);white-space:nowrap}
   .pb-sub{color:var(--muted);font-weight:400}
+  .pb-body{padding:4px 0 12px 18px;border-bottom:1px solid var(--line)}
   .p1-lbl{font:600 11px "IBM Plex Mono",monospace;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
   .p1-about{width:100%;min-height:90px;padding:10px;border:1px solid var(--line);font:400 16px/1.5 "Inter",sans-serif;background:#fff;color:var(--ink);resize:vertical}
   .p1-x{background:none;border:0;min-width:44px;min-height:44px;color:var(--muted);font-size:20px;cursor:pointer}
@@ -216,6 +217,8 @@
   .lock .bl-step.past{background:rgba(255,255,255,.18);color:#FFFFFF}
   .lock .bl-step.now{background:var(--spark);border-color:var(--spark);color:#1A1A1A}
   .lock .bl-more{color:var(--spark)}
+  .lock .p1-lbl{color:#B8B8B8}
+  .lock .iv-li{border-color:rgba(255,255,255,.12)}
   .lock .tbtn,.lk-act{background:transparent;color:#FFFFFF;border:1px solid rgba(255,255,255,.6);min-height:44px;padding:0 14px;font:600 14px "Inter",sans-serif;cursor:pointer;margin:4px 6px 4px 0}
   .lk-act{margin-top:10px}
   @media (prefers-reduced-motion:no-preference){.lk-ready{animation:lkPulse 2.4s ease-in-out infinite}}
@@ -998,6 +1001,21 @@ function renderTaskMore(n){const box=$('#nd-more');if(!box)return;const p=PROJ.p
   $('#nd-done').onclick=()=>{tick(n);noteWhere(n.id,'done',fixNow());save();closeSheets();renderNotes();};}
 // Ticked projects head the to-do list on the main screen.
 function renderProjMain(){renderNotes();}
+// What the laptop last read from the project's vault folder and dashboard (p.vault), if it has.
+const vaultTxt=x=>typeof x==='string'?x:(x&&(x.text||x.title))||'';
+function vaultHtml(p){const v=p&&p.vault;if(!v)return '';
+  return `<div class="p1-lbl">From your vault${v.updated?' . '+age(v.updated):''}</div>`
+    +(v.status?`<p class="note">${escapeHtml(v.status)}</p>`:'')
+    +(v.tasks||[]).slice(0,8).map(t=>`<div class="iv-li">${escapeHtml(vaultTxt(t))}</div>`).join('')
+    +(v.notes||[]).slice(0,3).map(n=>`<p class="note" style="white-space:pre-wrap">${escapeHtml(vaultTxt(n))}</p>`).join('');}
+// Inside an open project, on the main screen and the lock screen: what the vault says, what Claude
+// is doing or found for it, and a button to give Claude a task there by voice.
+function projExtra(p,box){let as='';try{as=ASKS.filter(a=>a.project===p.id&&a.kind!=='app').slice(0,2).map(askCard).join('');}catch{}
+  box.insertAdjacentHTML('beforeend',vaultHtml(p)+as);
+  const b=document.createElement('button');b.className='tbtn';b.textContent='Give Claude a task';
+  const st=document.createElement('div');st.className='note';
+  b.onclick=()=>speakOnce(st,async t=>{st.textContent='sending...';try{await speakToProject(p,t);}catch{st.textContent='Could not send it';}});
+  box.append(b,st);}
 const kidsOf=id=>PROJ.projects.filter(p=>projLive(p)&&p.parent===id);
 // A project and everything under it, so a project is never placed inside its own subproject.
 const familyOf=id=>{const out=new Set([id]);let grew=true;while(grew){grew=false;for(const p of PROJ.projects)if(p.parent&&out.has(p.parent)&&!out.has(p.id)){out.add(p.id);grew=true;}}return out;};
@@ -1005,15 +1023,20 @@ function renderProjBoard(){const box=$('#proj-main');if(!box)return;
   if(!document.documentElement.classList.contains('backend')){box.innerHTML='';return;}
   const live=PROJ.projects.filter(projLive),ids=new Set(live.map(p=>p.id)),tops=live.filter(p=>!p.parent||!ids.has(p.parent));
   const stage=p=>{try{const b=ASKS.find(a=>a.project===p.id&&askActive(a));return b?' . '+STAGE_LABEL[askStage(b)]:'';}catch{return '';}};
+  // Tapping a project opens it in place; open ones are remembered.
+  const po=LS.get('ob-mainproj',{});
   const row=(p,d)=>{const open=tasksOf(p).filter(n=>!n.done).length;
-    return `<button class="pb-row" data-pb="${p.id}" style="padding-left:${d*18}px"><span>${d?'<span class="pb-sub">&#8627;</span> ':''}${escapeHtml(p.name)}</span><small>${escapeHtml(p.status)}${open?' . '+open+' to do':''}${escapeHtml(stage(p))}</small></button>`
+    return `<button class="pb-row" data-pb="${p.id}" aria-expanded="${!!po[p.id]}" style="padding-left:${d*18}px"><span>${d?'<span class="pb-sub">&#8627;</span> ':''}${escapeHtml(p.name)}</span><small>${escapeHtml(p.status)}${open?' . '+open+' to do':''}${escapeHtml(stage(p))}</small></button>`
+      +(po[p.id]?`<div class="pb-body" data-pbb="${p.id}"></div>`:'')
       +(d<4?kidsOf(p.id).map(k=>row(k,d+1)).join(''):'');};
   const cats=[...new Set(tops.map(p=>p.kind||''))].sort((a,b)=>(!a)-(!b)||a.localeCompare(b));
   box.innerHTML=`<div class="pb-top"><span class="sec-lbl">Projects</span><button class="tbtn" id="pb-all">Add or sort</button></div>`
     +(tops.length?cats.map(c=>`<div class="pb-cat">${escapeHtml(c||'No category yet')}</div>`+tops.filter(p=>(p.kind||'')===c).sort((a,b)=>(b.main-a.main)||a.name.localeCompare(b.name)).map(p=>row(p,0)).join('')).join('')
       :'<p class="note">No projects yet. Tap Add or sort.</p>')
     +'<div class="pb-cat" style="margin-top:26px">Tasks</div>';
-  box.querySelectorAll('[data-pb]').forEach(x=>x.onclick=()=>openProject(PROJ.projects.find(p=>p.id===x.dataset.pb)));
+  box.querySelectorAll('[data-pb]').forEach(x=>x.onclick=()=>{po[x.dataset.pb]=!po[x.dataset.pb];LS.set('ob-mainproj',po);renderProjBoard();});
+  box.querySelectorAll('[data-pbb]').forEach(x=>{const p=PROJ.projects.find(q=>q.id===x.dataset.pbb);projExtra(p,x);
+    const o=document.createElement('button');o.className='tbtn';o.textContent='Open the project';o.onclick=()=>openProject(p);x.appendChild(o);});
   $('#pb-all').onclick=()=>$('#open-proj').click();}
 function renderProj(){const box=$('#proj-list');
   const live=PROJ.projects.filter(projLive),rest=PROJ.projects.filter(p=>!projLive(p));
@@ -1053,6 +1076,7 @@ function renderP1(){const p=PROJ.projects.find(x=>x.id===P1.id)||P1;P1=p;$('#p1-
   $('#p1-body').innerHTML=`<button class="p1-speak" id="p1-speak">${isBuild(p)?'Speak a change to this build':'Speak to this project'}</button><div class="note" id="p1-status"></div>
     ${pa.length?`<div class="iv-h">With Claude</div>${pa.map(askCard).join('')}`:''}
     ${p.link?`<p><a href="${escapeHtml(p.link)}" target="_blank" rel="noopener">Open ${escapeHtml(p.name)}</a></p>`:''}
+    ${vaultHtml(p)}
     <div>${PROJ.statuses.map(s=>`<button class="chip${s===p.status?' on':''}" data-st="${s}">${s}</button>`).join('')}</div>
     <label class="iv-row" style="align-items:center;gap:8px;margin:10px 0"><input type="checkbox" id="p1-main" ${p.main?'checked':''} style="width:22px;height:22px"> On the main screen</label>
     <div class="p1-lbl">Name</div><input class="nd-when" id="p1-name" value="${escapeHtml(p.name)}" aria-label="Project name" style="width:100%">
@@ -1482,7 +1506,8 @@ function lockProjectBody(p,depth=0){const box=document.createElement('div');box.
   box.innerHTML=bs.map(askCard).join('')
     +ts.map((n,i)=>{const a=ASKS.find(x=>x.id===n.ask),busy=a&&(a.kind==='app'?askActive(a):a.status!=='done'),meta=[whenOf(n),escapeHtml(taskAskLabel(a))].filter(Boolean).join(' . ');
       return `<div class="lk-item"><div class="lk-text" data-ln="${i}" role="button" tabindex="0">${escapeHtml(n.text)}${meta?`<div style="font-size:13px;opacity:.75;margin-top:2px">${meta}</div>`:''}</div>${busy?'':`<button class="lk-cl" data-lc="${i}" aria-label="Have Claude do this">Claude</button>`}<button class="lk-tick" data-lt="${i}" aria-label="Mark done">${ICON_TICK}</button></div>`;}).join('')
-    +(!bs.length&&!ts.length&&!kids.length?'<div class="lk-empty" style="padding:10px 0">Nothing open here.</div>':'');
+    +(!p.id&&!bs.length&&!ts.length&&!kids.length?'<div class="lk-empty" style="padding:10px 0">Nothing open here.</div>':'');
+  if(p.id)projExtra(p,box);
   wireAskCards(box);
   box.querySelectorAll('[data-lt]').forEach(b=>b.onclick=()=>{const n=ts[+b.dataset.lt];tick(n);noteWhere(n.id,'done',fixNow());save();setTimeout(renderNotes,220);});
   box.querySelectorAll('[data-lc]').forEach(b=>b.onclick=()=>{b.disabled=true;claudeTask(ts[+b.dataset.lc]);});
@@ -1854,7 +1879,7 @@ window.OB_BUILDS=true; // set once the build code below has loaded; the lock scr
 const askActive=a=>a.kind==='app'&&!['live','declined','done'].includes(askStage(a));
 function stepper(a){const s=askStage(a),i=STEPS.indexOf({checking:'building',publishing:'building','going-live':'live',waiting:'planning',picked:'planning'}[s]||s);
   return `<div class="bl-steps">${STEPS.map((x,j)=>`<span class="bl-step${j<i?' past':j===i?' now':''}">${STEP_NAME[x]}</span>`).join('')}</div>`;}
-const askWords=a=>String(a.text||'').split('\n\nJay, on the plan:')[0].replace(/^About the project "[^"]*": /,'');
+const askWords=a=>String(a.text||'').split(/\n\n(?:Jay, on the plan:|Vault: )/)[0].replace(/^About the project "[^"]*": /,'');
 function askCard(a){const s=askStage(a),log=(a.log||[]).slice(-3),busy=['waiting','picked','planning','building','checking','publishing','going-live'].includes(s);
   return `<div class="bl-card"><div class="iv-tag">${escapeHtml(STAGE_LABEL[s]||s)}</div><div class="bl-text">${escapeHtml(askWords(a))}</div>
     ${a.kind==='app'?stepper(a):''}
@@ -1899,9 +1924,10 @@ function speakOnce(statusBox,done){let live=true;statusBox.textContent='listenin
   const rec=recognize({onLive:()=>{live=false;statusBox.textContent='writing it up...';},
     onEnd:(t,err)=>{live=false;statusBox.textContent=t?'':'did not catch that, try again';if(t)done(t);}});
   statusBox.onclick=()=>{if(live)rec.stop();};return rec;}
-// Talking to a project: a change if it is a build, a question or feedback otherwise.
-async function speakToProject(p,t){
-  const body={text:isBuild(p)?t:`About the project "${p.name}": ${t}`,project:p.id,app:isBuild(p)};
+// Talking to a project: a change if it is a build, a question or feedback otherwise. Claude is
+// pointed at the project's vault notes so it works from what is actually there.
+async function speakToProject(p,t){const f=p.vault&&p.vault.folder;
+  const body={text:isBuild(p)?t:`About the project "${p.name}": ${t}\n\nVault: read my vault notes and dashboard for this project${f?' in '+f:''} first.`,project:p.id,app:isBuild(p)};
   const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify(body)});
   if(!r.ok)throw new Error('ask '+r.status);const a=await r.json();ASKS=[a,...ASKS];LS.set('ob-asks',ASKS);renderBuilds();return a;}
 // Main screen and project sheet: builds in progress, newest first.
