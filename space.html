@@ -85,6 +85,13 @@
     <p class="tag" style="margin:10px 0 0" id="how-note">You can change this or leave at any time.</p>
   </div>
 
+  <div class="box hidden" id="home">
+    <span class="tag">One tap next time</span>
+    <p style="margin:6px 0 0">Put this space on your home screen, like an app. It opens already signed in, and what Jay adds shows up by itself.</p>
+    <div class="row"><button id="home-go">Get One Button</button></div>
+    <p class="tag hidden" style="margin:10px 0 0" id="home-how"></p>
+  </div>
+
   <h2>How it connects</h2>
   <p class="lede">Projects, and the conversations they came from. Tap one to light up its links.</p>
   <svg id="map" viewBox="0 0 680 400" role="img" aria-label="Map of projects and the conversations they came from"></svg>
@@ -172,6 +179,13 @@ document.querySelectorAll('#how button').forEach(b=>b.onclick=()=>{
   $('#how-note').textContent={email:'One email a day at most, only when something changed.',page:'Nothing is sent. What is new shows here when you visit.',pause:'Paused. Nothing is sent until you turn it back on.'}[b.dataset.how];
 });
 $('#leave').onclick=e=>{e.target.replaceWith('(In the live page this removes you from the space and stops all updates.)');};
+// Home screen: the address it saves carries the sign-in, so the icon opens straight in.
+$('#home').classList.toggle('hidden',!KEEP);
+$('#home-go').onclick=()=>{
+  try{history.replaceState(null,'',location.pathname+'?s='+encodeURIComponent(SLUG)+'#n='+encodeURIComponent(KEEP.name)+'&c='+encodeURIComponent(KEEP.code));}catch(e){}
+  $('#home-how').textContent=(/iPhone|iPad/.test(navigator.userAgent)?'In Safari, tap the Share button, then Add to Home Screen.':'Open the browser menu (the three dots), then Add to Home screen.')+
+    ' If this opened inside WhatsApp or Messages, open it in your normal browser first.';
+  $('#home-how').classList.remove('hidden');};
 
 // Map: people in the middle, projects around them, conversations on the edges between.
 (function map(){
@@ -256,7 +270,21 @@ const WEAVE=CANOPY+'/api/weave-trust', API=ON_CANOPY?'https://one-button-jay.web
 // Every screen before the space itself: a heading, a line, and optionally a small form.
 function gate(t,x,html){$('#body').classList.add('hidden');$('#gate').classList.remove('hidden');$('#gate-t').textContent=t;$('#gate-x').textContent=x;
   let m=$('#gate-more');if(!m){m=document.createElement('div');m.id='gate-more';$('#gate').appendChild(m);}m.innerHTML=html||'';return m;}
-function show(D){$('#gate').classList.add('hidden');$('#body').classList.remove('hidden');render(D);}
+// Every 10 seconds, while the page is in view, the space is fetched again and redrawn only if
+// something changed, so what one person adds shows up for the other without reloading.
+let LAST='',POLL=null;
+function show(D,again){$('#gate').classList.add('hidden');$('#body').classList.remove('hidden');
+  const s=JSON.stringify(D);if(s!==LAST){LAST=s;render(D);}
+  if(again&&!POLL)POLL=setInterval(()=>{if(!document.hidden)again().then(d=>show(d)).catch(()=>{});},10000);}
+// A link from Jay's "Send link" carries the person's name and account code after the #, a part of
+// the address that never reaches a server. It signs in on any device, every time, and this browser
+// remembers it, so one share is enough.
+const H=new URLSearchParams(location.hash.slice(1));
+let KEEP=null;
+try{KEEP=H.get('c')?{name:H.get('n'),code:H.get('c')}:JSON.parse(localStorage.getItem('ob.space.code.'+SLUG)||'null');}catch(e){}
+function keep(name,code){KEEP={name,code};try{localStorage.setItem('ob.space.code.'+SLUG,JSON.stringify(KEEP));}catch(e){}}
+function forget(){KEEP=null;try{localStorage.removeItem('ob.space.code.'+SLUG);}catch(e){}}
+if(KEEP&&H.get('c'))keep(KEEP.name,KEEP.code);
 function appKey(){try{if(window.OBNative&&OBNative.apiKey)return OBNative.apiKey();}catch(e){}
   try{if(window.parent!==window&&window.parent.obKey)return window.parent.obKey();}catch(e){}try{return JSON.parse(localStorage.getItem('ob-key')||'""');}catch(e){return '';}}
 const post=(route,body,headers={})=>fetch(API+route,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)})
@@ -277,7 +305,7 @@ function weave(){
   s.onerror=()=>gate('This page could not load','The part that signs you in did not arrive. Reload the page.');
   s.onload=()=>{
     const W=window.WeaveWallet;
-    const read=()=>post('data',{slug:SLUG,token:W.token()}).then(d=>{stripInvite();show(d);if(INVITE){try{W.markInvite(INVITE,'opened');}catch(e){}}});
+    const read=()=>post('data',{slug:SLUG,token:W.token()}).then(d=>{stripInvite();show(d,()=>post('data',{slug:SLUG,token:W.token()}));if(INVITE){try{W.markInvite(INVITE,'opened');}catch(e){}}});
     // One quiet second try with a fresh sign-in before saying anything; then the real reason.
     const open=()=>read().catch(()=>{const m=W.me();return (m&&m.agentName?W.login({name:m.agentName,requireCommunity:SLUG}):Promise.resolve()).then(read);})
       .catch(e=>{const why=String((e&&e.message)||e);
@@ -288,8 +316,12 @@ function weave(){
       .then(()=>W.login({name,requireCommunity:SLUG}))
       .then(r=>r&&r.ok?open():gate('Not in this space yet','You are signed in as '+name+', but this space has not been shared with that name. Ask Jay for a link.'));
 
+    // The sign-in this browser remembers, or the one in Jay's link.
+    const useKept=()=>W.useAccountCode(KEEP.name,KEEP.code,{device:W.describeDevice()})
+      .then(r=>{if(!r||!r.ok)throw new Error((r&&r.reason)||'sign-in failed');return enter(KEEP.name);});
+
     function signIn(t,x){
-      const m=gate(t||'Sign in to your space',x||'Use your name and the account code you were shown when you joined.',
+      const m=gate(t||'Sign in to your space',x||'Tap the newest link Jay sent you and you are straight back in. If you have an account code, you can use it here instead.',
         `<label style="display:block;margin-top:14px">Name<input id="si-n" style="${FIELD}" autocomplete="username" autocapitalize="none" value="${esc(NAME)}"></label>
          <label style="display:block">Account code<input id="si-c" style="${FIELD}" autocomplete="current-password" autocapitalize="none" spellcheck="false"></label>
          <button id="si-go">Sign in</button><p id="si-e" class="tag" style="margin:12px 0 0"></p>
@@ -297,12 +329,13 @@ function weave(){
       const go=()=>{const n=$('#si-n').value.trim().toLowerCase(),c=$('#si-c').value.trim();
         if(!n||!c){$('#si-e').textContent='Fill in both.';return;}
         $('#si-go').disabled=true;$('#si-e').textContent='Signing in…';
-        W.useAccountCode(n,c,{device:W.describeDevice()}).then(r=>{if(!r||!r.ok)throw new Error((r&&r.reason)||'sign-in failed');return enter(n);})
+        W.useAccountCode(n,c,{device:W.describeDevice()}).then(r=>{if(!r||!r.ok)throw new Error((r&&r.reason)||'sign-in failed');keep(n,c);return enter(n);})
           .catch(e=>{$('#si-go').disabled=false;$('#si-e').textContent='That did not work: '+String((e&&e.message)||e)+'. Check the code, or ask Jay for a new one.';});};
       m.querySelector('#si-go').onclick=go;m.querySelector('#si-c').onkeydown=e=>{if(e.key==='Enter')go();};
     }
 
     function showCode(name,code){
+      keep(name,code);
       const m=gate('You are in. Keep this code.','This account code signs you in to the space on any other phone or computer. It is shown only once, so save it now: in your password manager, or a note to yourself.',
         `<p style="font:600 22px ui-monospace,Menlo,monospace;letter-spacing:.06em;margin:16px 0 4px;word-break:break-all">${esc(code)}</p>
          <p class="tag" style="margin:0 0 14px">Your name: ${esc(name)}</p>
@@ -330,17 +363,18 @@ function weave(){
       }).catch(e=>gate('This link could not open the space',String((e&&e.message)||e)+'. Try reloading.'));
     }
 
-    // A link from Jay for someone already in: it signs in this device by itself, once. A device
-    // already signed in opens without using it up.
+    // An older link from Jay for someone already in: it signs in this device by itself, once, and
+    // this browser keeps the sign-in after. A device already signed in opens without using it up.
     function claim(){
       gate('Opening your space','Signing you in on this device.');
-      post('claim',{slug:SLUG,d:DEV}).then(c=>{stripInvite();
+      post('claim',{slug:SLUG,d:DEV}).then(c=>{stripInvite();keep(c.name,c.code);
         return W.useAccountCode(c.name,c.code,{device:W.describeDevice()}).then(r=>{if(!r||!r.ok)throw new Error((r&&r.reason)||'sign-in failed');return open();});})
         .catch(e=>{const why=String((e&&e.message)||e);stripInvite();
-          if(/used|bad link/.test(why))gate('This link has been used','Each link opens the space on one phone or computer. Ask Jay for a new one.');
+          if(/used|bad link/.test(why))gate('This link has been used','Ask Jay to send the link again. The new one keeps working on every phone and computer.');
           else gate('The space did not open just now','Ask Jay for a new link. If it keeps happening, tell Jay this: '+why+'.');});
     }
-    const next=()=>DEV?claim():INVITE?join():signIn();
+    // A remembered sign-in goes first; if it no longer works, the link in the address is tried.
+    const next=()=>KEEP?useKept().catch(()=>{forget();next();}):DEV?claim():INVITE?join():signIn();
     W.check(SLUG).then(r=>{
       if(r&&r.ok)return INVITE?enter(W.me().agentName):open();
       const mine=W.me();
@@ -353,7 +387,7 @@ function weave(){
 
 if(window.SPACE) show(window.SPACE);
 else if(!SLUG) show({...DEMO,banner:'Preview with made-up content. This is what someone sees after tapping the link you shared.'});
-else if(appKey()&&!INVITE){gate('Opening','Loading your view of this space.');post('get',{slug:SLUG},{'x-ob-key':appKey()}).then(show).catch(weave);}
+else if(appKey()&&!INVITE){gate('Opening','Loading your view of this space.');post('get',{slug:SLUG},{'x-ob-key':appKey()}).then(D=>show(D,()=>post('get',{slug:SLUG},{'x-ob-key':appKey()}))).catch(weave);}
 else weave();
 </script>
 </body>

@@ -1763,7 +1763,7 @@ function ivShareText(t){
 
 /* Shared spaces: one per person, built by the laptop from the vault's "Jay x <Name>" folder,
    so what they see always matches the vault. Jay opens his own view here (held parts shown);
-   the person gets a one-time Weave link, and after joining, the plain address is enough. */
+   the person gets a one-time Weave link to join, and after joining, a link that keeps working. */
 let SPACES=LS.get('ob-spaces',[]);
 async function spRefresh(){
   if(!obKey())return;
@@ -1790,7 +1790,7 @@ async function spSend(sp,btn){
   if(btn)btn.disabled=true;
   try{const r=await fetch('/api/space/invite',{method:'POST',headers:obHeaders(),body:JSON.stringify({slug:sp.slug})});
     const d=await r.json(); if(!r.ok)throw 0;
-    spShare(sp.name,d);
+    await spShare(sp.name,{...d,slug:d.slug||sp.slug});
   }catch{showToast('Could not make the link, try again');}
   if(btn)btn.disabled=false;
 }
@@ -1800,11 +1800,22 @@ async function spSendPerson(name,interview,btn){
   if(btn)btn.disabled=true;
   try{const r=await fetch('/api/space/person',{method:'POST',headers:obHeaders(),body:JSON.stringify({name,interview})});
     const d=await r.json(); if(!r.ok)throw 0;
-    spShare(name,d); spRefresh();
+    await spShare(name,d); spRefresh();
   }catch{showToast('Could not make the link, try again');}
   if(btn)btn.disabled=false;
 }
-function spShare(name,d){
+// Someone already in gets a link carrying their name and account code after the #, a part of the
+// address that never reaches a server, so it keeps working on every phone and computer, every time.
+async function spKeepLink(slug){
+  const r=await fetch('/api/space/code',{method:'POST',headers:obHeaders(),body:JSON.stringify({slug})});
+  const d=await r.json(); if(!r.ok)throw 0;
+  return `https://one-button-jay.web.app/space.html?s=${encodeURIComponent(slug)}#n=${encodeURIComponent(d.name)}&c=${encodeURIComponent(d.code)}`;
+}
+async function spShare(name,d){
+  const slug=d.slug||(spOf(name)||{}).slug;
+  const keep=d.joined&&slug?await spKeepLink(slug).catch(()=>''):'';
+  if(keep){ivShareText(`Our shared space: ${keep}
+Tap it on any phone or computer and you are in. It keeps working, so save it and keep it to yourself.`);return;}
   ivShareText(d.joined?`Our shared space: ${d.link}
 Tap it on the phone or computer you want to use and you are in. Each link works on one device.`
     :`Hi ${name}, I've set up a private space for our conversations: the notes and transcripts, the projects growing from them, and next steps. Tap the link and press Join. You'll be shown an account code once: save it, it signs you in on your other devices. ${d.link}`);
