@@ -136,7 +136,7 @@ async function shopSource(body) {
 // Tasks live as lists, one per person; the key says whose. Open routes (a shared space read
 // with a Weave token) fall back to Jay's.
 const ID_RE_T = /^[\w-]{1,80}$/;
-const TASK_FIELDS = ["text", "cat", "done", "ts", "updated", "subs", "due", "place", "deleted", "store", "doneAt", "every", "everyBy", "hist", "aisle", "noAlarm", "alarmSeen", "remind", "snooze", "project", "from", "routine", "note", "url", "ask", "hold"];
+const TASK_FIELDS = ["text", "cat", "done", "ts", "updated", "subs", "due", "place", "deleted", "store", "doneAt", "every", "everyBy", "hist", "aisle", "noAlarm", "alarmSeen", "remind", "snooze", "project", "from", "routine", "note", "url", "ask", "hold", "photo"];
 
 function cleanTask(t) {
   const o = { id: String(t.id) };
@@ -281,6 +281,85 @@ async function clip(req) {
   return [200, { heard: t, tasks: made, text: (made.length > 1 ? "Added " + made.length + " tasks: " : "Added: ") + made.join("; ").slice(0, 200) }];
 }
 
+/* Photos (stage: the Mirror). One tap takes a picture; the server works out what it is and does
+ * the right thing with it. A receipt goes into the month's accounts and Claude is asked where
+ * the money went and what the regenerative alternative is. A sketch becomes instructions for
+ * Claude. Anything else becomes a task with the photo on it, waiting to be placed. The picture
+ * itself sits in Storage (rules deny all) until the laptop files it into the vault. */
+const photoFile = (id) => admin.storage().bucket().file(`onebutton/photos/${id}.jpg`);
+const PHOTO_MAX = 8 * 1024 * 1024;
+const PHOTO_SYS = `You look at one photo taken on a phone and say what it is and what to do with it. Reply with JSON only:
+{"kind": "receipt" | "sketch" | "document" | "place" | "thing" | "other",
+ "title": "at most 8 words, what this is",
+ "text": "what it shows or says, in plain English, at most 120 words; for a document or sketch, its content",
+ "receipt": {"shop": "", "date": "YYYY-MM-DD if printed, else empty", "total": 0, "currency": "ISO code or symbol as printed", "items": [{"name": "", "price": 0}]},
+ "sketch": {"instructions": ["each step or element the sketch asks for, as a clear sentence"]},
+ "task": "if the photo is plainly something to do (a broken thing, a note to self), one task starting with a verb, else empty"}
+Only fill "receipt" for a receipt or invoice, only "sketch" for a drawing, diagram or wireframe. Numbers as numbers. Never invent prices or words you cannot read; leave them out.`;
+
+async function photo(req) {
+  const buf = req.rawBody;
+  if (!buf || !buf.length) return [400, { error: "no photo", text: "No photo arrived" }];
+  if (buf.length > PHOTO_MAX) return [413, { error: "too big", text: "Photo too big (over 8 MB)" }];
+  const mime = /^image\/(jpeg|png|webp)$/.test(String(req.query.mime || "")) ? String(req.query.mime) : "image/jpeg";
+  const id = "ph" + Date.now().toString(36), created = Date.now();
+  await photoFile(id).save(buf, { contentType: mime, resumable: false });
+  const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + OPENROUTER_KEY.value() },
+    body: JSON.stringify({ model: CHAT_MODEL, max_tokens: 1200, messages: [
+      { role: "system", content: PHOTO_SYS },
+      { role: "user", content: [{ type: "image_url", image_url: { url: `data:${mime};base64,${buf.toString("base64")}` } }, { type: "text", text: "What is this, and what should happen with it?" }] }] }),
+  });
+  const d = await r.json().catch(() => ({}));
+  const seen = r.ok ? parseJSON(d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) : null;
+  const kind = ["receipt", "sketch", "document", "place", "thing", "other"].includes(seen && seen.kind) ? seen.kind : "other";
+  const doc = { id, created, mime, kind, title: String((seen && seen.title) || "A photo").slice(0, 120), text: String((seen && seen.text) || "").slice(0, 2000), collected: false };
+  let out = { ...doc, text: "" };
+  if (kind === "receipt" && seen.receipt) {
+    const rc = seen.receipt, num = (x) => Math.max(0, Number(x) || 0);
+    const rec = { id, photo: id, created, shop: String(rc.shop || "").slice(0, 120), date: /^\d{4}-\d{2}-\d{2}$/.test(String(rc.date || "")) ? rc.date : new Date(created).toISOString().slice(0, 10),
+      total: num(rc.total), currency: String(rc.currency || "").slice(0, 8), items: (Array.isArray(rc.items) ? rc.items : []).slice(0, 60).map((i) => ({ name: String((i && i.name) || "").slice(0, 120), price: num(i && i.price) })) };
+    rec.month = rec.date.slice(0, 7);
+    doc.receipt = rec;
+    await listRef().collection("accounts").doc(id).set(rec);
+    // The Mirror: where did the money go, and what would the regenerative alternative be.
+    const lines = rec.items.filter((i) => i.name).slice(0, 15).map((i) => `- ${i.name}${i.price ? " " + i.price : ""}`).join("\n");
+    const a = await newAsk(`A receipt I photographed: ${rec.shop || "a shop"}, ${rec.date}, total ${rec.total} ${rec.currency}.\n${lines}\n\nTwo things, briefly. First, the Mirror: estimate where this money goes in three lines, labour, rent and debt, for this kind of shop, and say how sure you are. Second, for the biggest items, name the regenerative or local alternative near me, who makes or sells it, and what it would cost. Plain English, no em dashes, under 200 words.`, "", 0, { photo: id, project: "" });
+    doc.ask = a.id;
+    out = { ...out, receipt: rec, ask: a.id, text: `Receipt: ${rec.shop || "shop"}, ${rec.total} ${rec.currency}. Added to ${rec.month}; Claude is looking at where the money goes.` };
+  } else if (kind === "sketch" && seen.sketch) {
+    const steps = (Array.isArray(seen.sketch.instructions) ? seen.sketch.instructions : []).map(String).slice(0, 30);
+    doc.steps = steps;
+    const a = await newAsk(`From a sketch I photographed (${doc.title}): ${doc.text}\n\nWhat it asks for:\n${steps.map((s) => "- " + s).join("\n")}\n\nTurn this into a short plan with first steps.`, "", 0, { photo: id });
+    doc.ask = a.id;
+    out = { ...out, steps, ask: a.id, text: `Sketch read: ${doc.title}. ${a.kind === "app" ? "Claude will show you a plan." : "Sent to Claude."}` };
+  } else {
+    const t = String((seen && seen.task) || doc.title).slice(0, 300);
+    const task = cleanTask({ id: String(created), text: t, cat: "do", done: false, ts: created, updated: created, subs: [], due: "", place: "", note: doc.text, photo: id, hold: true });
+    await listRef().collection("tasks").doc(task.id).set(task);
+    doc.task = task.id;
+    out = { ...out, task: task.id, text: `${doc.title}. Saved as a task to place.` };
+  }
+  await listRef().collection("photos").doc(id).set(doc);
+  return [200, out];
+}
+// Recent photos and the month's accounts, for the app.
+async function photoList() {
+  const photos = (await listRef().collection("photos").orderBy("created", "desc").limit(60).get()).docs.map((d) => d.data());
+  const accounts = (await listRef().collection("accounts").orderBy("created", "desc").limit(400).get()).docs.map((d) => d.data());
+  const months = {};
+  for (const a of accounts) { const m = months[a.month] || (months[a.month] = { month: a.month, total: 0, count: 0, currency: a.currency }); m.total += a.total || 0; m.count++; }
+  return { photos, accounts, months: Object.values(months).sort((a, b) => b.month.localeCompare(a.month)) };
+}
+async function photoCollected(body) {
+  const id = String(body.id || "");
+  if (!ID_RE.test(id)) return [400, { error: "bad id" }];
+  await listRef().collection("photos").doc(id).update({ collected: true, folder: String(body.folder || "").slice(0, 300) });
+  if (body.deleteFile) await photoFile(id).delete({ ignoreNotFound: true });
+  return [200, { ok: true }];
+}
+
 // Phone: every interview's note (no transcripts) and every Ask Claude request.
 async function ivList() {
   const ivs = (await listRef().collection("interviews").orderBy("created", "desc").limit(60).get()).docs
@@ -304,7 +383,7 @@ async function newAsk(text, interview, n = 0, opts = {}) {
     if (!ob.empty) opts = { ...opts, project: ob.docs[0].id };
   }
   const ask = { id: "a" + (Date.now() + n), interview: interview || "", text, kind: app ? "app" : "ask", status: "waiting", created: Date.now(),
-    project: opts.project || "", parent: opts.parent || "", stage: "waiting", log: [] };
+    project: opts.project || "", parent: opts.parent || "", photo: opts.photo || "", stage: "waiting", log: [] };
   await listRef().collection("asks").doc(ask.id).set(ask);
   return ask;
 }
@@ -379,7 +458,9 @@ async function ivPending() {
   const ships = (await listRef().collection("asks").where("ship", "==", "approved").get()).docs.map((d) => d.data());
   // Recordings Jay has since said were with someone else: the laptop moves them to the right folder.
   const moves = (await listRef().collection("interviews").where("refile", "==", true).get()).docs.map((d) => d.data());
-  return { interviews: ivs, asks, moves, ships };
+  // Photos not yet filed into the vault: the laptop fetches each with photo/get and says collected.
+  const photos = (await listRef().collection("photos").where("collected", "==", false).get()).docs.map((d) => d.data());
+  return { interviews: ivs, asks, moves, ships, photos };
 }
 
 async function ivCollected(body) {
@@ -756,6 +837,23 @@ async function routed(req, res, body, sp, send, me) {
     if (pe) {
       if (!me.admin) { res.status(403).json({ error: "only Jay adds people" }); return; }
       try { send(await PERSON_ROUTES[pe[1]](body)); } catch (e) { res.status(500).json({ error: String((e && e.message) || e) }); }
+      return;
+    }
+    const ph = req.path.match(/\/photo(?:\/(list|collected|get))?$/);
+    if (ph) {
+      try {
+        if (ph[1] === "list") { send(await photoList()); return; }
+        if (ph[1] === "collected") { send(await photoCollected(body)); return; }
+        if (ph[1] === "get") {
+          const id = String(body.id || "");
+          if (!ID_RE.test(id)) { res.status(400).json({ error: "bad id" }); return; }
+          try { const [buf] = await photoFile(id).download(); res.set("Cache-Control", "private, max-age=86400").type("image/jpeg").send(buf); }
+          catch { res.status(404).json({ error: "no photo" }); }
+          return;
+        }
+        if (!(await checkRateLimit(DAILY_LIMIT, "ob_" + clientIp(req)))) { res.status(429).json({ error: "daily limit reached", text: "Daily limit reached" }); return; }
+        send(await photo(req));
+      } catch (e) { res.status(502).json({ error: String((e && e.message) || e), text: "Could not read the photo" }); }
       return;
     }
     if (req.path.endsWith("/clip")) {

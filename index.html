@@ -193,6 +193,7 @@
   .lk-foot{display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:16px}
   .lk-status{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.06em;color:#B8B8B8;min-height:18px;text-align:center}
   .lk-row{display:flex;align-items:center;justify-content:center;gap:22px;width:100%}
+  .cam-row{display:flex;justify-content:center;margin-top:10px}
   .lk-orb{width:112px;height:112px;border-radius:50%;border:none;background:var(--spark);color:#1A1A1A;display:grid;place-items:center;cursor:pointer;transition:transform .15s,opacity .15s}
   .lk-orb:active{transform:scale(.96)}
   .lock.rec .lk-orb{animation:lkpulse 1.1s ease-in-out infinite}
@@ -296,6 +297,7 @@
     <div class="ico-row">
       <button class="ico-btn" id="open-today" title="Today" aria-label="Today"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>
       <button class="ico-btn" id="open-proj" title="Projects" aria-label="Projects"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
+      <button class="ico-btn" id="open-photos" title="Photos and accounts" aria-label="Photos and accounts"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h3l2-2h6l2 2h3v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="ico-btn" id="open-lock" title="Lock screen view" aria-label="Lock screen view">&#9638;</button>
       <button class="ico-btn" id="open-ivs" title="Interviews" aria-label="Interviews" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
       <button class="ico-btn" id="open-settings" title="Settings">&#9881;</button>
@@ -310,6 +312,7 @@
       <button class="orb" id="orb"><span class="orb-dot"></span></button>
     </div>
     <div class="levels" id="levels"></div>
+    <div class="cam-row"><button class="tbtn" id="cam-main" aria-label="Take a photo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:6px"><path d="M4 7h3l2-2h6l2 2h3v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Photo</button></div>
     <div class="heard" id="heard"></div>
     <div class="result" id="result">
       <div class="rl" id="result-label">.</div>
@@ -353,6 +356,10 @@
   </div>
 </div>
 
+<div class="sheet" id="sheet-photos">
+  <div class="sheet-bar"><h2>Photos</h2><button class="sheet-x" data-close>&times;</button></div>
+  <div class="sheet-body" id="photos-body"></div>
+</div>
 <div class="sheet" id="sheet-note">
   <div class="sheet-bar"><h2>Task</h2><button class="sheet-x" data-close>&times;</button></div>
   <div class="sheet-body">
@@ -471,9 +478,11 @@
     <div class="lk-status" id="lk-status" aria-live="polite">tap to speak, tap again to stop</div>
     <div class="lk-row">
       <button class="lk-orb" id="lk-orb" aria-label="Record a task"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+      <button class="lk-int" id="lk-cam" aria-label="Take a photo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h3l2-2h6l2 2h3v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span class="lk-int-lbl">Photo</span></button>
     </div>
   </div>
 </div>
+<input type="file" id="cam-in" accept="image/*" capture="environment" hidden aria-hidden="true">
 <div class="toast" id="toast"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -516,7 +525,7 @@ function save(){ LS.set('ob-notes',notes); queueSync(); syncAlarms(); }
 
 /* Sync (stage 1): the server keeps the master copy so phone and browser agree. Per task, the
  * latest change wins. Coordinates never go up: they live in WHERE, on this device only. */
-const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt','every','everyBy','hist','aisle','noAlarm','alarmSeen','remind','snooze','project','from','routine','note','url','ask','hold'];
+const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt','every','everyBy','hist','aisle','noAlarm','alarmSeen','remind','snooze','project','from','routine','note','url','ask','hold','photo'];
 function syncShape(n){const o={id:String(n.id)};SYNC_FIELDS.forEach(k=>{if(n[k]!==undefined)o[k]=n[k];});return o;}
 function syncSig(n){return JSON.stringify(syncShape({...n,updated:0}));}
 let synced=LS.get('ob-synced',{}); // id -> what the server last agreed on
@@ -1014,9 +1023,11 @@ function renderTaskMore(n){const box=$('#nd-more');if(!box)return;const p=PROJ.p
   box.innerHTML=(p?`<div class="p1-lbl">Project</div><button class="tbtn" id="nd-openp">${escapeHtml(p.name)}</button>${p.about?`<p class="note">${escapeHtml(p.about)}</p>`:''}`:'')
     +(n.note?`<div class="p1-lbl">Notes</div><p class="note" style="white-space:pre-wrap">${escapeHtml(n.note)}</p>`:'')
     +(/^https:\/\//.test(n.url||'')?`<p><a href="${escapeHtml(n.url)}" target="_blank" rel="noopener">Open the link</a></p>`:'')
+    +(n.photo?`<div class="ph-thumb" data-photo="${escapeHtml(n.photo)}"></div>`:'')
     +(a?`<div class="p1-lbl">Claude</div>`+(a.kind==='app'?askCard(a):`<div class="iv-tag">${escapeHtml(taskAskLabel(a))}</div>${a.status==='done'?`<div class="iv-ans" style="white-space:pre-wrap">${escapeHtml(a.answer||'')}</div>`:''}`):'')
     +`<div class="iv-row"><button class="tbtn" id="nd-claude">${a?'Ask Claude again':'Have Claude do this'}</button><button class="tbtn" id="nd-done">Done</button></div>`;
   if(a&&a.kind==='app')wireAskCards(box);
+  box.querySelectorAll('.ph-thumb').forEach(el=>photoInto(el,el.dataset.photo));
   if(a&&a.status==='done'&&!SEEN.includes(a.id))seeAsks([a.id]);
   const op=$('#nd-openp');if(op)op.onclick=()=>{closeSheets();if(lock.classList.contains('on'))hideLock();openProject(p);};
   $('#nd-claude').onclick=e=>{e.target.disabled=true;claudeTask(n);};
@@ -1992,6 +2003,47 @@ function openAsk(a){if(!a)return;if(askStage(a)==='plan'){openPlan(a);return;}
 // A build Jay does not want, at any stage: gone from every list, and the laptop skips it.
 async function dropAsk(a){try{const r=await fetch(API+'/api/interview/drop',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:a.id})});if(!r.ok)throw 0;
     Object.assign(a,{ship:'declined',stage:'declined',status:'done'});LS.set('ob-asks',ASKS);closeSheets();renderBuilds();renderClaude();showToast('Dropped');}catch{showToast('Could not reach the server');}}
+
+/* Photos. One tap opens the camera; the picture goes to the server, which says what it is and
+ * does the right thing: a receipt into the month's accounts with Claude on where the money went,
+ * a sketch into a plan, anything else a task to place. The photo stays on the server, privately. */
+const camIn=$('#cam-in');
+let camBusy=false;
+function takePhoto(){if(camBusy){showToast('Still sending the last one');return;}if(!obKey()){showToast('App key missing');return;}camIn.value='';camIn.click();}
+$('#cam-main').onclick=takePhoto;$('#lk-cam').onclick=takePhoto;
+camIn.onchange=async()=>{const f=camIn.files&&camIn.files[0];if(!f)return;camBusy=true;
+  const say=s=>{showToast(s);if(lock.classList.contains('on'))lkSay(s);};say('Reading the photo...');
+  try{const blob=await shrinkImage(f,1600,.85);
+    const r=await fetch(API+'/api/photo?mime=image/jpeg',{method:'POST',headers:{'Content-Type':'image/jpeg','x-ob-key':obKey()},body:blob});
+    const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.text||d.error||'failed');
+    say(d.text||'Saved');PHOTOS=null;syncNow();ivRefresh();}
+  catch(e){say('Could not send the photo: '+(e.message||'try again'));}
+  camBusy=false;};
+// A phone photo is several megabytes; the model needs far less. Longest side to max pixels, JPEG.
+function shrinkImage(file,max,q){return new Promise((res,rej)=>{const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{const s=Math.min(1,max/Math.max(img.width,img.height)),cv=document.createElement('canvas');cv.width=Math.round(img.width*s);cv.height=Math.round(img.height*s);
+    cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);cv.toBlob(b=>b?res(b):rej(new Error('could not read the image')),'image/jpeg',q);};
+  img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('could not read the image'));};img.src=url;});}
+// A thumbnail, fetched with the key (the photo is never at a public address).
+const PH_URLS={};
+async function photoInto(el,id){if(!el)return;if(!PH_URLS[id]){try{const r=await fetch(API+'/api/photo/get',{method:'POST',headers:obHeaders(),body:JSON.stringify({id})});if(!r.ok)throw 0;PH_URLS[id]=URL.createObjectURL(await r.blob());}catch{el.textContent='';return;}}
+  el.innerHTML=`<img src="${PH_URLS[id]}" alt="" style="max-width:100%;max-height:220px;display:block;margin:6px 0">`;}
+let PHOTOS=null;
+async function renderPhotos(){const b=$('#photos-body');b.innerHTML='<p class="note">Loading...</p>';
+  if(!PHOTOS){try{const r=await fetch(API+'/api/photo/list',{method:'POST',headers:obHeaders(),body:'{}'});PHOTOS=await r.json();if(!r.ok)throw 0;}catch{b.innerHTML='<p class="note">Could not load photos.</p>';return;}}
+  const money=(m)=>`${Math.round(m.total*100)/100} ${escapeHtml(m.currency||'')}`;
+  b.innerHTML=`<div class="iv-row" style="margin-bottom:12px"><button class="save" id="ph-take" style="margin:0">Take a photo</button></div>
+    <p class="note">A receipt goes into the month's accounts and Claude looks at where the money went. A sketch becomes a plan. Anything else becomes a task to place.</p>
+    ${(PHOTOS.months||[]).length?`<div class="iv-h">Accounts</div>${PHOTOS.months.map(m=>`<div class="iv-li"><b>${escapeHtml(m.month)}</b> ${money(m)} <small>. ${m.count} receipt${m.count>1?'s':''}</small></div>`).join('')}`:''}
+    <div class="iv-h">Photos</div>${(PHOTOS.photos||[]).map(p=>{const a=ASKS.find(x=>x.id===p.ask);
+      return `<div class="iv-li"><div class="iv-tag">${escapeHtml(p.kind)} . ${new Date(p.created).toLocaleDateString()}</div><b>${escapeHtml(p.title)}</b>
+        ${p.receipt?`<div>${escapeHtml(p.receipt.shop||'')} ${p.receipt.total} ${escapeHtml(p.receipt.currency||'')}</div>`:''}
+        <div class="ph-thumb" data-photo="${escapeHtml(p.id)}"></div>
+        ${p.text?`<p class="note" style="white-space:pre-wrap">${escapeHtml(p.text)}</p>`:''}
+        ${a?(a.status==='done'?`<div class="iv-tag">Claude</div><div class="iv-ans" style="white-space:pre-wrap">${escapeHtml(a.answer||'')}</div>`:`<div class="iv-tag">${escapeHtml(taskAskLabel(a))}</div>`):''}</div>`;}).join('')||'<p class="note">No photos yet.</p>'}`;
+  $('#ph-take').onclick=takePhoto;
+  b.querySelectorAll('.ph-thumb').forEach(el=>photoInto(el,el.dataset.photo));}
+$('#open-photos').onclick=()=>{openSheet('#sheet-photos');renderPhotos();};
 function wireAskCards(box){
   box.querySelectorAll('[data-arow]').forEach(b=>b.onclick=()=>openAsk(ASKS.find(a=>a.id===b.dataset.arow)));const A=id=>ASKS.find(a=>a.id===id);
   box.querySelectorAll('[data-plan]').forEach(b=>b.onclick=()=>openPlan(A(b.dataset.plan)));

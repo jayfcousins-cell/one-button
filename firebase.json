@@ -17,6 +17,8 @@
       { "source": "/api/project/**", "function": "oneButton", "region": "us-central1" },
       { "source": "/api/person/**", "function": "oneButton", "region": "us-central1" },
       { "source": "/api/clip", "function": "oneButton", "region": "us-central1" },
+      { "source": "/api/photo", "function": "oneButton", "region": "us-central1" },
+      { "source": "/api/photo/**", "function": "oneButton", "region": "us-central1" },
       { "source": "**", "destination": "/index.html" }
     ]
   }
