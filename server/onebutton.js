@@ -706,7 +706,14 @@ async function projSave(body) {
   return [200, out];
 }
 
-const IV_ROUTES = { list: ivList, transcript: ivTranscript, ask: ivAsk, pending: ivPending, collected: ivCollected, answer: ivAnswer, restore: ivRestore, with: ivWith, voices: ivVoices, approve: ivApprove, shipped: ivShipped, progress: ivProgress, plan: ivPlanOk };
+// Jay drops a build he does not want, at any stage: it leaves every list and the laptop skips it.
+async function ivDrop(body) {
+  const askId = String(body.askId || "");
+  if (!ID_RE.test(askId)) return [400, { error: "bad id" }];
+  await listRef().collection("asks").doc(askId).update({ ship: "declined", stage: "declined", status: "done", dropped: Date.now(), planOk: false });
+  return [200, { ok: true }];
+}
+const IV_ROUTES = { list: ivList, transcript: ivTranscript, ask: ivAsk, pending: ivPending, collected: ivCollected, answer: ivAnswer, restore: ivRestore, with: ivWith, voices: ivVoices, approve: ivApprove, shipped: ivShipped, progress: ivProgress, plan: ivPlanOk, drop: ivDrop };
 const SP_ROUTES = { save: spSave, list: spList, get: spGet, invite: spInvite, code: spCode, person: spForPerson };
 
 exports.oneButton = onRequest(

@@ -1987,7 +1987,11 @@ function askRow(a){const s=askStage(a),need=['plan','preview','live','failed'].i
   return `<button class="bl-row${need?' need':''}" data-arow="${a.id}"><span class="bl-row-t">${escapeHtml(askWords(a))}</span><span class="bl-row-s">${escapeHtml(STAGE_LABEL[s]||s)}</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>`;}
 function openAsk(a){if(!a)return;if(askStage(a)==='plan'){openPlan(a);return;}
   PLAN_ASK=a;openSheet('#sheet-plan');$('#pl-title').textContent=STAGE_LABEL[askStage(a)]||'Claude';
-  const b=$('#pl-body');b.innerHTML=askCard(a);wireAskCards(b);}
+  const b=$('#pl-body');b.innerHTML=askCard(a)+(a.kind==='app'&&askActive(a)?`<div class="iv-row"><button class="tbtn" id="pl-drop">Drop this build</button></div>`:'');wireAskCards(b);
+  const d=$('#pl-drop');if(d)d.onclick=()=>dropAsk(a);}
+// A build Jay does not want, at any stage: gone from every list, and the laptop skips it.
+async function dropAsk(a){try{const r=await fetch(API+'/api/interview/drop',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:a.id})});if(!r.ok)throw 0;
+    Object.assign(a,{ship:'declined',stage:'declined',status:'done'});LS.set('ob-asks',ASKS);closeSheets();renderBuilds();renderClaude();showToast('Dropped');}catch{showToast('Could not reach the server');}}
 function wireAskCards(box){
   box.querySelectorAll('[data-arow]').forEach(b=>b.onclick=()=>openAsk(ASKS.find(a=>a.id===b.dataset.arow)));const A=id=>ASKS.find(a=>a.id===id);
   box.querySelectorAll('[data-plan]').forEach(b=>b.onclick=()=>openPlan(A(b.dataset.plan)));
@@ -2010,7 +2014,7 @@ function openPlan(a,logOnly){if(!a)return;PLAN_ASK=a;openSheet('#sheet-plan');
     ?`<div class="bl-log" style="max-height:none">${(a.log||[]).map(l=>new Date(l.t).toTimeString().slice(0,5)+'  '+escapeHtml(l.s)).join('<br>')}</div>`
     :`<p class="note">Change the plan here, and answer any questions in it, before Claude starts.</p>
       <textarea class="iv-ask bl-plan" id="pl-plan" aria-label="The plan, editable" style="min-height:200px">${escapeHtml(a.plan||'')}</textarea>
-      <div class="iv-row"><button class="save" id="pl-go">Go ahead with this plan</button><button class="tbtn" id="pl-change">Ask for a new plan (speak)</button></div>
+      <div class="iv-row"><button class="save" id="pl-go">Go ahead with this plan</button><button class="tbtn" id="pl-change">Ask for a new plan (speak)</button><button class="tbtn" id="pl-drop">Drop this</button></div>
       <div class="note" id="pl-status"></div><input class="nd-when" id="pl-type" placeholder="Or type what a new plan should do differently" aria-label="What to change">`);
   if(logOnly)return;
   // Go ahead sends the plan as it reads in the box; a change asks Claude to plan again.
@@ -2018,6 +2022,7 @@ function openPlan(a,logOnly){if(!a)return;PLAN_ASK=a;openSheet('#sheet-plan');
       Object.assign(a,change?{plan:'',stage:'waiting'}:{plan:plan||a.plan,planOk:true,stage:'waiting'});LS.set('ob-asks',ASKS);closeSheets();renderBuilds();
       showToast(change?'Claude will plan again with that':'Building from your plan');}catch{showToast('Could not reach the server');}};
   $('#pl-go').onclick=()=>send('',$('#pl-plan').value.trim());
+  $('#pl-drop').onclick=()=>dropAsk(a);
   $('#pl-type').onchange=e=>{const t=e.target.value.trim();if(t)send(t);};
   $('#pl-change').onclick=()=>speakOnce($('#pl-status'),t=>send(t));}
 // One short recording, its words handed to done(). Used wherever the app asks a question.
