@@ -555,10 +555,14 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncNow();
 /* Where (stage 1): note where each task was said and where it was ticked off. Kept on this
  * device only and never synced; the place stage learns Home and the shops from it. */
 let WHERE=LS.get('ob-where',{}), pendingFix=null;
+// A pretend position, set from Settings to test places without walking there. Lasts ten minutes.
+let FAKE=LS.get('ob-fake',null);if(FAKE&&Date.now()>FAKE.until){FAKE=null;LS.set('ob-fake',null);}
+let LAST_FIX=null;
 function fixNow(){return new Promise(res=>{
+  if(FAKE&&Date.now()<FAKE.until)return res(LAST_FIX={lat:FAKE.lat,lng:FAKE.lng,acc:5,ts:Date.now(),fake:true});
   if(!navigator.geolocation) return res(null);
   navigator.geolocation.getCurrentPosition(
-    p=>res({lat:+p.coords.latitude.toFixed(5),lng:+p.coords.longitude.toFixed(5),acc:Math.round(p.coords.accuracy),ts:Date.now()}),
+    p=>res(LAST_FIX={lat:+p.coords.latitude.toFixed(5),lng:+p.coords.longitude.toFixed(5),acc:Math.round(p.coords.accuracy),ts:Date.now()}),
     ()=>res(null),{maximumAge:300000,timeout:8000,enableHighAccuracy:false});
 });}
 function noteWhere(id,kind,fixP){ if(!fixP)return; fixP.then(f=>{ if(!f)return;
@@ -958,7 +962,7 @@ function nativeDone(){const N=window.OBNative;if(!(N&&N.takeAlarmActions))return
   let hit=false;for(const a of acts){const n=notes.find(x=>String(x.id)===String(a.id).split('|')[0]);if(!n||n.done)continue;hit=true;
     if(a.act==='done')tick(n);else{n.alarmSeen=a.at;n.snooze=a.at+a.m*6e4;}}
   if(hit){save();renderNotes();}}
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){nativeDone();loadEvents();syncAlarms();renderNotes();maybeBrief();}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){nativeDone();loadEvents();syncAlarms();renderNotes();maybeBrief();whereNow();startWhereWatch();}else stopWhereWatch();});
 /* Projects. The Projects screen sorts everything: the projects Jay stewards, proposals found in
  * recorded conversations, and things he asked Claude to look into. Ticked ones sit on the main
  * screen beside the button. A task belongs to a project when it is linked on the task, or when it
@@ -1214,18 +1218,45 @@ let PLACES=LS.get('ob-places',[]), HERE=null;
 const savePlaces=()=>LS.set('ob-places',PLACES);
 const metres=(a,b)=>{const R=6371e3,r=x=>x*Math.PI/180,dl=r(b.lat-a.lat),dn=r(b.lng-a.lng);
   const h=Math.sin(dl/2)**2+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));};
-// Which of Jay's places the phone is at now, if any (within 200 m).
-function whereNow(){fixNow().then(f=>{if(!f)return;const at=PLACES.filter(p=>p.lat!=null).map(p=>({p,d:metres(f,p)})).filter(x=>x.d<=(x.p.r||200)).sort((a,b)=>a.d-b.d)[0];
-  const was=HERE&&HERE.id;HERE=at?at.p:null;if((HERE&&HERE.id)!==was){renderNotes();}});}
+// Which of Jay's places the phone is at now, if any (within the place's radius, 200 m unless set).
+// Arriving somewhere with open tasks brings them up on the lock screen with a buzz. Checked at
+// start, whenever the phone's position changes while the app is open, and once a minute.
+function whereNow(f){const go=fix=>{if(!fix)return;const at=PLACES.filter(p=>p.lat!=null).map(p=>({p,d:metres(fix,p)})).filter(x=>x.d<=(x.p.r||200)).sort((a,b)=>a.d-b.d)[0];
+  const was=HERE&&HERE.id;HERE=at?at.p:null;
+  if((HERE&&HERE.id)!==was){renderNotes();if(HERE)arrived(HERE);}
+  if($('#sheet-settings').classList.contains('open'))renderPlaces();};
+  f?go(f):fixNow().then(go);}
+function arrived(p){const ts=notes.filter(n=>!n.done&&!n.deleted&&!n.routine&&placeOf(n)&&placeOf(n).id===p.id);if(!ts.length)return;
+  try{navigator.vibrate&&navigator.vibrate([200,100,200,100,400]);}catch{}
+  showToast(`You're at ${p.name}: ${ts.length} thing${ts.length>1?'s':''} to do here`);
+  if(document.hidden===false&&!lock.classList.contains('on'))showLock();}
+let whereWatch=null,whereTimer=null;
+function startWhereWatch(){if(!navigator.geolocation||whereWatch!=null)return;
+  try{whereWatch=navigator.geolocation.watchPosition(p=>{if(FAKE&&Date.now()<FAKE.until)return;whereNow(LAST_FIX={lat:+p.coords.latitude.toFixed(5),lng:+p.coords.longitude.toFixed(5),acc:Math.round(p.coords.accuracy),ts:Date.now()});},
+    ()=>{},{maximumAge:60000,timeout:20000,enableHighAccuracy:false});}catch{}
+  clearInterval(whereTimer);whereTimer=setInterval(()=>{if(!document.hidden)whereNow();},60000);}
+function stopWhereWatch(){if(whereWatch!=null&&navigator.geolocation)navigator.geolocation.clearWatch(whereWatch);whereWatch=null;clearInterval(whereTimer);}
+function pretendAt(p){FAKE=p?{lat:p.lat,lng:p.lng,name:p.name,until:Date.now()+10*60e3}:null;LS.set('ob-fake',FAKE);HERE=null;whereNow();renderPlaces();
+  showToast(p?`Pretending you are at ${p.name} for ten minutes`:'Back to your real position');}
 // A task's place: the one chosen, or a place named when it was said ("at home" -> the home).
 function placeOf(n){if(!n.place)return null;const k=n.place.toLowerCase();
   return PLACES.find(p=>p.name.toLowerCase()===k)||(k==='home'?PLACES.find(p=>p.kind==='home'):null)||null;}
+// Settings: every place with its radius, how far away it is now, and a way to pretend to be there.
 function renderPlaces(){const box=$('#places-list');if(!box)return;
-  box.innerHTML=PLACES.map((p,i)=>`<div class="note-item"><div class="ntext">${escapeHtml(p.name)}<div class="nmeta">${escapeHtml((PLACE_KINDS.find(k=>k[0]===p.kind)||PLACE_KINDS[4])[1])}${p.lat!=null?' . location set':' . no location yet'}${HERE&&HERE.id===p.id?' . you are here':''}</div></div>
-    <button class="tbtn" data-pl-here="${i}">Set to here</button><button class="tbtn" data-pl-del="${i}" aria-label="Remove ${escapeHtml(p.name)}">&times;</button></div>`).join('')||'<p class="note">No places yet.</p>';
+  const dist=p=>p.lat!=null&&LAST_FIX?Math.round(metres(LAST_FIX,p))+' m away':'';
+  box.innerHTML=(FAKE&&Date.now()<FAKE.until?`<p class="note">Pretending you are at ${escapeHtml(FAKE.name||'a place')}. <button class="tbtn" id="pl-real">Back to real position</button></p>`:'')
+    +PLACES.map((p,i)=>`<div class="note-item" style="flex-wrap:wrap"><div class="ntext" style="flex:1 1 100%">${escapeHtml(p.name)}<div class="nmeta">${escapeHtml((PLACE_KINDS.find(k=>k[0]===p.kind)||PLACE_KINDS[4])[1])}${p.lat!=null?' . location set':' . no location yet'}${dist(p)?' . '+dist(p):''}${HERE&&HERE.id===p.id?' . you are here':''}</div></div>
+    <label class="nmeta" style="display:flex;align-items:center;gap:6px;flex:1 1 100%;margin:4px 0">Within <input type="number" min="30" max="2000" step="10" value="${p.r||200}" data-pl-r="${i}" aria-label="Radius in metres" style="width:80px;padding:6px;border:1px solid var(--line);font:inherit"> metres</label>
+    <button class="tbtn" data-pl-here="${i}">Set to here</button>${p.lat!=null?`<button class="tbtn" data-pl-fake="${i}">Pretend I'm here</button>`:''}<button class="tbtn" data-pl-del="${i}" aria-label="Remove ${escapeHtml(p.name)}">&times;</button></div>`).join('')
+    +`<input class="nd-when" id="pl-new" placeholder="New place, saves where you are now" aria-label="New place" style="width:100%;margin-top:8px">
+    <p class="note">Places work while One Button is open or on the lock screen. ${LAST_FIX?'Last position '+(LAST_FIX.fake?'is pretend':'was '+age(LAST_FIX.ts))+'.':'No position yet.'}</p>`;
   box.querySelectorAll('[data-pl-here]').forEach(b=>b.onclick=async()=>{b.textContent='Finding…';const f=await fixNow();
     if(!f){showToast('Could not get your location');b.textContent='Set to here';return;}
     Object.assign(PLACES[+b.dataset.plHere],{lat:f.lat,lng:f.lng});savePlaces();renderPlaces();whereNow();showToast('Saved where it is');});
+  box.querySelectorAll('[data-pl-r]').forEach(x=>x.onchange=()=>{PLACES[+x.dataset.plR].r=Math.max(30,Math.min(2000,Number(x.value)||200));savePlaces();HERE=null;whereNow();});
+  box.querySelectorAll('[data-pl-fake]').forEach(b=>b.onclick=()=>pretendAt(PLACES[+b.dataset.plFake]));
+  const real=$('#pl-real');if(real)real.onclick=()=>pretendAt(null);
+  $('#pl-new').onchange=e=>addPlace(e.target.value,'other',true);
   box.querySelectorAll('[data-pl-del]').forEach(b=>b.onclick=()=>{PLACES.splice(+b.dataset.plDel,1);savePlaces();renderPlaces();});}
 async function addPlace(name,kind,here){name=String(name||'').trim();if(!name)return null;
   const p={id:'pl'+Date.now().toString(36),name,kind:kind||'other',r:200};
@@ -2079,7 +2110,7 @@ function boot(){
   renderClaude();
   setTimeout(celebrate,1500);
   if(NATIVE&&NATIVE.processInterview){ivRefresh();addEventListener('online',ivRefresh);}
-  whereNow();renderPlaces();renderRhythm();
+  whereNow();startWhereWatch();renderPlaces();renderRhythm();
   $('#pl-kind').innerHTML=PLACE_KINDS.map(([k,l])=>'<option value="'+k+'">'+l+'</option>').join('');
   $('#pl-add-here').onclick=async()=>{await addPlace($('#pl-name').value,$('#pl-kind').value,true);$('#pl-name').value='';};
   $('#pl-add').onclick=async()=>{await addPlace($('#pl-name').value,$('#pl-kind').value,false);$('#pl-name').value='';};
