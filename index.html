@@ -488,7 +488,10 @@ const LS = {
   get:(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}},
   set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
 };
-const CHAT_ENDPOINT='/api/chat';
+// One server for every copy of this page. Jay's site reaches it at its own address; a fork
+// hosted anywhere else reaches the same server here. A fork that runs its own server edits this line.
+const API=/^(one-button-jay\.web\.app|localhost|127\.0\.0\.1)$/.test(location.hostname)||/--/.test(location.hostname)?'':'https://one-button-jay.web.app';
+const CHAT_ENDPOINT=API+'/api/chat';
 // Server key: built into the phone app; in a browser, pasted once in settings.
 function obKey(){ try{ if(window.OBNative&&OBNative.apiKey) return OBNative.apiKey(); }catch{} return LS.get('ob-key',''); }
 function obHeaders(){ return {'Content-Type':'application/json','x-ob-key':obKey()}; }
@@ -529,7 +532,7 @@ async function syncNow(){
   for(const id in synced) if(!seen[id]) changes.push({id,deleted:true,updated:now});
   const before=JSON.stringify(notes);
   try{
-    const r=await fetch('/api/sync',{method:'POST',headers:obHeaders(),body:JSON.stringify({changes})});
+    const r=await fetch(API+'/api/sync',{method:'POST',headers:obHeaders(),body:JSON.stringify({changes})});
     if(!r.ok) throw new Error('sync '+r.status);
     const {tasks}=await r.json();
     if(JSON.stringify(notes)!==before){syncAgain=true;return;} // edited meanwhile: go round again
@@ -600,7 +603,7 @@ function recognize({onLive,onStart,onEnd,onLong}){
       onLive&&onLive('transcribing...');
       const fr=new FileReader();
       fr.onload=()=>{
-        fetch('/api/transcribe',{method:'POST',headers:obHeaders(),
+        fetch(API+'/api/transcribe',{method:'POST',headers:obHeaders(),
           body:JSON.stringify({audio:String(fr.result).split(',')[1],mimeType:blob.type||'audio/webm'})})
           .then(r=>{ if(!r.ok) throw new Error('transcribe '+r.status); return r.json(); })
           .then(d=>onEnd&&onEnd((d.text||'').trim(),null))
@@ -680,7 +683,7 @@ const FOR_CLAUDE=/^\s*(hey |ok |okay )?(claude|agent)\b[,:. ]*|^\s*(for|ask|tell
 // back to approve, then a preview to try. No need to open the project first.
 const APP_CHANGE=t=>/\b((?:one|1)[ -]?button|the app|this app)\b/i.test(t)&&/\b(change|make|add|remove|take out|move|fix|put|show|hide|bigger|smaller|should|want|improve|build)\b/i.test(t);
 async function askClaudeDirect(text,extra={}){
-  const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({text,...extra})});
+  const r=await fetch(API+'/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({text,...extra})});
   if(!r.ok)throw new Error('ask '+r.status);const a=await r.json();ASKS=[a,...ASKS];LS.set('ob-asks',ASKS);renderClaude();return a;}
 // Words for Claude, from either button: a change to the app, or a request. Returns what to show, or '' if not for Claude.
 async function toClaude(t){
@@ -878,7 +881,7 @@ function renderShop(n){const box=$('#nd-shop');if(n.cat!=='buy'){box.innerHTML='
   $('#nd-newshop').onchange=e=>{const s=e.target.value.trim();if(!s)return;LS.set('ob-shops',[...new Set([...LS.get('ob-shops',[]),s])]);n.store=s;save();renderNotes();renderShop(n);};
   $('#nd-src-go').onclick=()=>findSource(n,false);}
 async function findSource(n,refresh){const out=$('#nd-src');out.innerHTML='<div class="nd-status">Searching Dahab sources, this can take half a minute…</div>';
-  try{const r=await fetch('/api/shop/source',{method:'POST',headers:obHeaders(),body:JSON.stringify({item:n.text,group:aisleOf(n),refresh})});
+  try{const r=await fetch(API+'/api/shop/source',{method:'POST',headers:obHeaders(),body:JSON.stringify({item:n.text,group:aisleOf(n),refresh})});
     const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);
     const link=p=>!/^https:\/\//.test(p.link||'')?' (no link found)':p.linkOk===false?' (its web link did not open: ask locally)':` <a href="${escapeHtml(p.link)}" target="_blank" rel="noopener">source</a>`;
     const one=(p,b)=>p&&p.name?`<div style="margin:8px 0">${b?'<b>':''}${escapeHtml(p.name)}${b?'</b>':''}${p.where?' . '+escapeHtml(p.where):''}<div class="nmeta">${escapeHtml(p.why||'')}${p.how?' '+escapeHtml(p.how):''}${link(p)}</div></div>`:'';
@@ -954,10 +957,10 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden){nativeDon
  * came from one of that project's conversations. */
 let PROJ=LS.get('ob-proj',{projects:[],proposed:[],statuses:['Idea','Exploring','Active','Paused','Done','Dropped']});
 async function projRefresh(){if(!obKey())return;
-  try{const r=await fetch('/api/project/list',{method:'POST',headers:obHeaders(),body:'{}'});if(!r.ok)return;
+  try{const r=await fetch(API+'/api/project/list',{method:'POST',headers:obHeaders(),body:'{}'});if(!r.ok)return;
     PROJ=await r.json();LS.set('ob-proj',PROJ);projLoaded=true;renderProjMain();if($('#sheet-proj').classList.contains('open'))renderProj();fileByPerson();}catch{}}
 async function projSave(p){
-  try{const r=await fetch('/api/project/save',{method:'POST',headers:obHeaders(),body:JSON.stringify({project:p})});
+  try{const r=await fetch(API+'/api/project/save',{method:'POST',headers:obHeaders(),body:JSON.stringify({project:p})});
     const d=await r.json();if(!r.ok)throw 0;
     PROJ.projects=[d,...PROJ.projects.filter(x=>x.id!==d.id)];PROJ.proposed=PROJ.proposed.filter(x=>x.name!==d.name);
     LS.set('ob-proj',PROJ);renderProjMain();return d;
@@ -1604,7 +1607,7 @@ window.obInterview=(state,startedAt,info)=>{
 // A short recording from the phone's recorder becomes tasks, then the audio is deleted.
 async function nativeShort(name){const id=ivId(name);IVS[id]={status:'task'};LS.set('ob-ivs',IVS);
   lock.classList.add('busy');lkSay('transcribing...');
-  let t='';try{const r=await fetch('/api/transcribe',{method:'POST',headers:obHeaders(),body:JSON.stringify({audio:NATIVE.readInterview(name),mimeType:'audio/mp4'})});
+  let t='';try{const r=await fetch(API+'/api/transcribe',{method:'POST',headers:obHeaders(),body:JSON.stringify({audio:NATIVE.readInterview(name),mimeType:'audio/mp4'})});
     if(r.ok)t=((await r.json()).text||'').trim();}catch{}
   if(!t){lock.classList.remove('busy');delete IVS[id];LS.set('ob-ivs',IVS);lkSay('could not transcribe, the recording is kept in the app');return;}
   NATIVE.deleteInterview(name);delete IVS[id];LS.set('ob-ivs',IVS);lockText(t);}
@@ -1646,7 +1649,7 @@ function renderInterviews(){
 
 async function ivRefresh(){
   if(!obKey())return;
-  try{const r=await fetch('/api/interview/list',{method:'POST',headers:obHeaders(),body:'{}'});
+  try{const r=await fetch(API+'/api/interview/list',{method:'POST',headers:obHeaders(),body:'{}'});
     if(!r.ok)return; const d=await r.json();
     for(const iv of d.interviews||[]){const mine=IVS[iv.id]||{};
       if(mine.status==='working'&&iv.status!=='done'&&iv.status!=='error')continue;
@@ -1673,7 +1676,7 @@ function openIv(name,fromList){ivOpen=name;ivFromList=fromList;openSheet('#sheet
 
 let ivWithOffer=[];
 async function ivSetWith(id,people){
-  try{const r=await fetch('/api/interview/with',{method:'POST',headers:obHeaders(),body:JSON.stringify({id,people})});
+  try{const r=await fetch(API+'/api/interview/with',{method:'POST',headers:obHeaders(),body:JSON.stringify({id,people})});
     if(!r.ok)throw 0;IVS[id]={...(IVS[id]||{}),people};LS.set('ob-ivs',IVS);renderIv();renderInterviews();
     showToast(people.length?'Filed with '+people.join(', ')+'; their space updates within five minutes':'Marked as just you');
   }catch{showToast('Could not save that, try again');}}
@@ -1748,7 +1751,7 @@ function renderIv(){
   const tr=$('#iv-tr'); if(tr) tr.onclick=async()=>{
     if(s.transcript){delete IVS[id].transcript;renderIv();return;}
     tr.disabled=true;
-    try{const r=await fetch('/api/interview/transcript',{method:'POST',headers:obHeaders(),body:JSON.stringify({id})});
+    try{const r=await fetch(API+'/api/interview/transcript',{method:'POST',headers:obHeaders(),body:JSON.stringify({id})});
       const d=await r.json(); if(!r.ok)throw 0;
       if(!d.transcript){showToast('Only in your vault note: recorded before transcripts were kept');tr.disabled=false;return;}
       IVS[id]={...IVS[id],transcript:d.transcript}; renderIv();
@@ -1773,7 +1776,7 @@ function renderIv(){
   const send=$('#iv-asksend'); if(send) send.onclick=async()=>{
     const text=$('#iv-asktext').value.trim(); if(!text){showToast('Say or type what you want first');return;}
     send.disabled=true;
-    try{const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({id,text})});
+    try{const r=await fetch(API+'/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({id,text})});
       if(!r.ok)throw 0; ASKS.unshift(await r.json()); LS.set('ob-asks',ASKS); showToast('Sent to Claude'); renderIv(); renderClaude();
     }catch{send.disabled=false;showToast('Could not send, try again');}
   };
@@ -1793,7 +1796,7 @@ function ivShareText(t){
 let SPACES=LS.get('ob-spaces',[]);
 async function spRefresh(){
   if(!obKey())return;
-  try{const r=await fetch('/api/space/list',{method:'POST',headers:obHeaders(),body:'{}'});
+  try{const r=await fetch(API+'/api/space/list',{method:'POST',headers:obHeaders(),body:'{}'});
     if(!r.ok)return; SPACES=(await r.json()).spaces||[]; LS.set('ob-spaces',SPACES); renderSpaces(); if(ivOpen)renderIv();
   }catch{}
 }
@@ -1814,7 +1817,7 @@ function renderSpaces(){
 function spOpen(sp){openSheet('#sheet-space');$('#sp-title').textContent='Jay and '+sp.name;$('#sp-frame').src='/space.html?s='+encodeURIComponent(sp.slug);}
 async function spSend(sp,btn){
   if(btn)btn.disabled=true;
-  try{const r=await fetch('/api/space/invite',{method:'POST',headers:obHeaders(),body:JSON.stringify({slug:sp.slug})});
+  try{const r=await fetch(API+'/api/space/invite',{method:'POST',headers:obHeaders(),body:JSON.stringify({slug:sp.slug})});
     const d=await r.json(); if(!r.ok)throw 0;
     await spShare(sp.name,{...d,slug:d.slug||sp.slug});
   }catch{showToast('Could not make the link, try again');}
@@ -1824,7 +1827,7 @@ const spOf=p=>SPACES.find(sp=>[sp.person,String(sp.name).toLowerCase()].includes
 // From a recording's card: makes the space if needed, adds this conversation, then shares the link.
 async function spSendPerson(name,interview,btn){
   if(btn)btn.disabled=true;
-  try{const r=await fetch('/api/space/person',{method:'POST',headers:obHeaders(),body:JSON.stringify({name,interview})});
+  try{const r=await fetch(API+'/api/space/person',{method:'POST',headers:obHeaders(),body:JSON.stringify({name,interview})});
     const d=await r.json(); if(!r.ok)throw 0;
     await spShare(name,d); spRefresh();
   }catch{showToast('Could not make the link, try again');}
@@ -1833,7 +1836,7 @@ async function spSendPerson(name,interview,btn){
 // Someone already in gets a link carrying their name and account code after the #, a part of the
 // address that never reaches a server, so it keeps working on every phone and computer, every time.
 async function spKeepLink(slug){
-  const r=await fetch('/api/space/code',{method:'POST',headers:obHeaders(),body:JSON.stringify({slug})});
+  const r=await fetch(API+'/api/space/code',{method:'POST',headers:obHeaders(),body:JSON.stringify({slug})});
   const d=await r.json(); if(!r.ok)throw 0;
   return `https://one-button-jay.web.app/space.html?s=${encodeURIComponent(slug)}#n=${encodeURIComponent(d.name)}&c=${encodeURIComponent(d.code)}`;
 }
@@ -1849,7 +1852,7 @@ Tap it on the phone or computer you want to use and you are in. Each link works 
 // Someone who joined but has no code (lost, or never saw it): a fresh one, ready to send them.
 async function spCode(sp,btn){
   if(btn)btn.disabled=true;
-  try{const r=await fetch('/api/space/code',{method:'POST',headers:obHeaders(),body:JSON.stringify({slug:sp.slug})});
+  try{const r=await fetch(API+'/api/space/code',{method:'POST',headers:obHeaders(),body:JSON.stringify({slug:sp.slug})});
     const d=await r.json(); if(!r.ok)throw 0;
     ivShareText(`Your sign-in for our shared space. Name: ${d.name}  Account code: ${d.code}  Open https://one-button-jay.web.app/space.html?s=${sp.slug} and sign in with those. Keep the code private; any device you're already signed in on keeps working.`);
   }catch{showToast('Could not make a code, try again');}
@@ -1860,7 +1863,7 @@ async function spCode(sp,btn){
 async function ivUploadWeb(blob,ts){
   const id='interview-'+new Date(ts).toISOString().slice(0,16).replace(/[:T]/g,'-')+'-web',name=id+'.m4a';
   IVS[id]={...(IVS[id]||{}),id,status:'working',since:Date.now(),created:ts};LS.set('ob-ivs',IVS);
-  try{const r=await fetch('/api/interview/process?id='+encodeURIComponent(id)+'&ts='+ts+'&mime='+encodeURIComponent(blob.type||'audio/webm'),
+  try{const r=await fetch(API+'/api/interview/process?id='+encodeURIComponent(id)+'&ts='+ts+'&mime='+encodeURIComponent(blob.type||'audio/webm'),
       {method:'POST',headers:{...obHeaders(),'Content-Type':blob.type||'audio/webm'},body:blob});
     const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||r.status);
     IVS[id]={...IVS[id],...d};LS.set('ob-ivs',IVS);openIv(name,false);return true;}
@@ -1941,7 +1944,7 @@ function wireAskCards(box){
   box.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>approveAsk(A(b.dataset.no),true));
   box.querySelectorAll('[data-seen]').forEach(b=>b.onclick=()=>seeAsks([b.dataset.seen]));}
 async function approveAsk(a,no){if(!a)return;
-  try{const r=await fetch('/api/interview/approve',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:a.id,no})});if(!r.ok)throw 0;
+  try{const r=await fetch(API+'/api/interview/approve',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:a.id,no})});if(!r.ok)throw 0;
     a.ship=no?'declined':'approved';LS.set('ob-asks',ASKS);renderBuilds();showToast(no?'Left as it was':'Going live in about a minute');}catch{showToast('Could not reach the server');}}
 // Previews open inside the app, where they have your list; a bar on top lets you comment or approve.
 function tryPreview(a){if(!a||!a.preview)return;const u=a.preview.replace(/\/?$/,'/')+'?app=android&ask='+encodeURIComponent(a.id);
@@ -1956,7 +1959,7 @@ function openPlan(a,logOnly){if(!a)return;PLAN_ASK=a;openSheet('#sheet-plan');
       <div class="iv-row"><button class="tbtn" id="pl-go">Go ahead</button><button class="tbtn" id="pl-change">Change it (speak)</button></div>
       <div class="note" id="pl-status"></div><input class="nd-when" id="pl-type" placeholder="Or type what to change" aria-label="What to change">`);
   if(logOnly)return;
-  const send=async change=>{try{const r=await fetch('/api/interview/plan',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:a.id,change})});if(!r.ok)throw 0;
+  const send=async change=>{try{const r=await fetch(API+'/api/interview/plan',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:a.id,change})});if(!r.ok)throw 0;
       Object.assign(a,change?{plan:'',stage:'waiting'}:{planOk:true,stage:'waiting'});LS.set('ob-asks',ASKS);closeSheets();renderBuilds();
       showToast(change?'Claude will plan again with that':'Building now');}catch{showToast('Could not reach the server');}};
   $('#pl-go').onclick=()=>send('');
@@ -1971,7 +1974,7 @@ function speakOnce(statusBox,done){let live=true;statusBox.textContent='listenin
 // pointed at the project's vault notes so it works from what is actually there.
 async function speakToProject(p,t){const f=p.vault&&p.vault.folder;
   const body={text:isBuild(p)?t:`About the project "${p.name}": ${t}\n\nVault: read my vault notes and dashboard for this project${f?' in '+f:''} first.`,project:p.id,app:isBuild(p)};
-  const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify(body)});
+  const r=await fetch(API+'/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify(body)});
   if(!r.ok)throw new Error('ask '+r.status);const a=await r.json();ASKS=[a,...ASKS];LS.set('ob-asks',ASKS);renderBuilds();return a;}
 // Main screen and project sheet: builds in progress, newest first.
 function renderBuilds(){const box=$('#build-strip');
@@ -2000,10 +2003,10 @@ setInterval(()=>{if(!document.hidden&&ASKS.some(a=>askActive(a)&&askStage(a)!=='
   bar.innerHTML=`<div class="pv-what">Trying a preview</div><div class="iv-row" style="margin:6px 0 0"><button class="tbtn" id="pv-say">Comment (speak)</button>${id?'<button class="tbtn" id="pv-ok">Approve</button>':''}<button class="tbtn" id="pv-back">Back to live</button></div><div class="note" id="pv-status"></div>`;
   document.body.appendChild(bar);
   $('#pv-back').onclick=()=>{location.href='https://one-button-jay.web.app/?app=android';};
-  if(id)$('#pv-ok').onclick=async()=>{try{const r=await fetch('/api/interview/approve',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:id})});if(!r.ok)throw 0;
+  if(id)$('#pv-ok').onclick=async()=>{try{const r=await fetch(API+'/api/interview/approve',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:id})});if(!r.ok)throw 0;
     $('#pv-status').textContent='Approved: going live in about a minute. Taking you back.';setTimeout(()=>$('#pv-back').click(),2500);}catch{$('#pv-status').textContent='Could not reach the server';}};
   $('#pv-say').onclick=()=>speakOnce($('#pv-status'),async t=>{try{const parent=ASKS.find(a=>a.id===id)||{};
-    const r=await fetch('/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({text:t,parent:id,project:parent.project||'',app:true})});if(!r.ok)throw 0;
+    const r=await fetch(API+'/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({text:t,parent:id,project:parent.project||'',app:true})});if(!r.ok)throw 0;
     $('#pv-status').textContent='Sent. Claude will plan it on top of this preview; the plan comes to the live app.';}catch{$('#pv-status').textContent='Could not send it';}});})();
 
 // Projects to sort: everything from conversations, Claude and the Idea Garden, one at a time.
@@ -2042,6 +2045,8 @@ window.obLockRecord=()=>{showLock();if(!lkLive)lockRecord();};
 window.obBusy=()=>lkLive||intOn;
 
 function boot(){
+  // A person's link carries their key once; it is kept on this phone and dropped from the address.
+  {const k=new URLSearchParams(location.search).get('key');if(k&&/^[\w-]{16,80}$/.test(k)){LS.set('ob-key',k);history.replaceState(null,'',location.pathname);}}
   renderNotes();
   statusEl.textContent='tap to speak';
   resetIdle();
