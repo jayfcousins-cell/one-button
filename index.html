@@ -1531,7 +1531,9 @@ function renderLock(){
       if(po[p.id])lkList.appendChild(lockProjectBody(p));}
     for(const n of group){
       const row=document.createElement('div');row.className='lk-item';
-      row.innerHTML=`<div class="lk-text">${escapeHtml(n.text)}${(whenOf(n)||(n.cat==='buy'&&shopOf(n).shop))?`<div style="font-size:13px;opacity:.75;margin-top:2px">${whenOf(n)||escapeHtml(shopOf(n).shop)}</div>`:''}</div><button class="lk-tick" aria-label="Mark done">${ICON_TICK}</button>`;
+      row.innerHTML=`<div class="lk-text" role="button" tabindex="0" aria-label="Open and edit this task">${escapeHtml(n.text)}${(whenOf(n)||(n.cat==='buy'&&shopOf(n).shop))?`<div style="font-size:13px;opacity:.75;margin-top:2px">${whenOf(n)||escapeHtml(shopOf(n).shop)}</div>`:''}</div><button class="lk-tick" aria-label="Mark done">${ICON_TICK}</button>`;
+      // Tap the words to open the task and edit it; the tick is the only other thing on the row.
+      row.querySelector('.lk-text').onclick=()=>openNote(n.id);
       row.querySelector('.lk-tick').onclick=()=>{tick(n);noteWhere(n.id,'done',fixNow());save();row.classList.add('gone');setTimeout(renderNotes,220);};
       lkList.appendChild(row);
     }
@@ -1968,14 +1970,16 @@ function openPlan(a,logOnly){if(!a)return;PLAN_ASK=a;openSheet('#sheet-plan');
   $('#pl-title').textContent=logOnly?'What Claude did':'Claude\'s plan';
   $('#pl-body').innerHTML=`<p class="note">${escapeHtml(askWords(a))}</p>`+(logOnly
     ?`<div class="bl-log" style="max-height:none">${(a.log||[]).map(l=>new Date(l.t).toTimeString().slice(0,5)+'  '+escapeHtml(l.s)).join('<br>')}</div>`
-    :`<div class="bl-plan">${escapeHtml(a.plan||'')}</div>
-      <div class="iv-row"><button class="tbtn" id="pl-go">Go ahead</button><button class="tbtn" id="pl-change">Change it (speak)</button></div>
-      <div class="note" id="pl-status"></div><input class="nd-when" id="pl-type" placeholder="Or type what to change" aria-label="What to change">`);
+    :`<p class="note">Change the plan here, and answer any questions in it, before Claude starts.</p>
+      <textarea class="iv-ask bl-plan" id="pl-plan" aria-label="The plan, editable" style="min-height:200px">${escapeHtml(a.plan||'')}</textarea>
+      <div class="iv-row"><button class="save" id="pl-go">Go ahead with this plan</button><button class="tbtn" id="pl-change">Ask for a new plan (speak)</button></div>
+      <div class="note" id="pl-status"></div><input class="nd-when" id="pl-type" placeholder="Or type what a new plan should do differently" aria-label="What to change">`);
   if(logOnly)return;
-  const send=async change=>{try{const r=await fetch(API+'/api/interview/plan',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:a.id,change})});if(!r.ok)throw 0;
-      Object.assign(a,change?{plan:'',stage:'waiting'}:{planOk:true,stage:'waiting'});LS.set('ob-asks',ASKS);closeSheets();renderBuilds();
-      showToast(change?'Claude will plan again with that':'Building now');}catch{showToast('Could not reach the server');}};
-  $('#pl-go').onclick=()=>send('');
+  // Go ahead sends the plan as it reads in the box; a change asks Claude to plan again.
+  const send=async(change,plan)=>{try{const r=await fetch(API+'/api/interview/plan',{method:'POST',headers:obHeaders(),body:JSON.stringify({askId:a.id,change,plan})});if(!r.ok)throw 0;
+      Object.assign(a,change?{plan:'',stage:'waiting'}:{plan:plan||a.plan,planOk:true,stage:'waiting'});LS.set('ob-asks',ASKS);closeSheets();renderBuilds();
+      showToast(change?'Claude will plan again with that':'Building from your plan');}catch{showToast('Could not reach the server');}};
+  $('#pl-go').onclick=()=>send('',$('#pl-plan').value.trim());
   $('#pl-type').onchange=e=>{const t=e.target.value.trim();if(t)send(t);};
   $('#pl-change').onclick=()=>speakOnce($('#pl-status'),t=>send(t));}
 // One short recording, its words handed to done(). Used wherever the app asks a question.

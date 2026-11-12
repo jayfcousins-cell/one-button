@@ -335,9 +335,11 @@ async function ivPlanOk(body) {
   const ref = listRef().collection("asks").doc(askId), s = await ref.get();
   if (!s.exists || !s.data().plan) return [404, { error: "no plan to answer" }];
   const change = String(body.change || "").trim().slice(0, 2000);
+  // Jay can rewrite the plan and answer its questions in place; the build follows his version.
+  const plan = String(body.plan || "").trim().slice(0, 12000);
   await ref.update(change
     ? { text: `${s.data().text}\n\nJay, on the plan: ${change}`, plan: "", planOk: false, stage: "waiting", status: "waiting" }
-    : { planOk: true, stage: "waiting", status: "waiting" });
+    : { planOk: true, stage: "waiting", status: "waiting", ...(plan && plan !== s.data().plan ? { plan, planBy: "jay" } : {}) });
   return [200, { ok: true }];
 }
 // Jay taps Approve on a previewed change; the laptop puts it live on its next round.
