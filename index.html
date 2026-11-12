@@ -1551,8 +1551,15 @@ function lockProjectBody(p,depth=0){const box=document.createElement('div');box.
   box.innerHTML=bs.map(askRow).join('')
     +ts.map((n,i)=>{const a=ASKS.find(x=>x.id===n.ask),busy=a&&(a.kind==='app'?askActive(a):a.status!=='done'),meta=[whenOf(n),escapeHtml(taskAskLabel(a))].filter(Boolean).join(' . ');
       return `<div class="lk-item"><div class="lk-text" data-ln="${i}" role="button" tabindex="0">${escapeHtml(n.text)}${meta?`<div style="font-size:13px;opacity:.75;margin-top:2px">${meta}</div>`:''}</div>${busy?'':`<button class="lk-cl" data-lc="${i}" aria-label="Have Claude do this">Claude</button>`}<button class="lk-tick" data-lt="${i}" aria-label="Mark done">${ICON_TICK}</button></div>`;}).join('')
-    +(!p.id&&!bs.length&&!ts.length&&!kids.length?'<div class="lk-empty" style="padding:10px 0">Nothing open here.</div>':'');
+    +(!bs.length&&!ts.length&&!kids.length?'<div class="lk-empty" style="padding:10px 0">Nothing open here.</div>':'')
+    // One button per project on the lock screen: say a task for it, or "Claude, ..." to put Claude on it.
+    +(p.id?`<div class="iv-row" style="margin:6px 0 10px"><button class="lk-cl" data-lsay style="padding:10px 14px">Speak to this project</button><span class="note" data-lstat style="opacity:.8"></span></div>`:'');
   if(p.id)projExtra(p,box);
+  const say=box.querySelector('[data-lsay]');if(say)say.onclick=()=>speakOnce(box.querySelector('[data-lstat]'),async t=>{
+    const m=t.match(/^(?:hey |ok |okay )?(?:claude|cloud|clawed)\b[,.:]?\s*/i);
+    if(m){try{const a=await speakToProject(p,t.slice(m[0].length));showToast(a.kind==='app'?'Claude will show you a plan first':'Claude is on it');}catch{showToast('Could not reach Claude');}}
+    else{const now=Date.now();notes.unshift({id:now,text:t,cat:'do',done:false,ts:now,updated:now,subs:[],due:'',place:'',project:p.id});save();showToast('Added to '+p.name);}
+    renderNotes();});
   wireAskCards(box);
   box.querySelectorAll('[data-lt]').forEach(b=>b.onclick=()=>{const n=ts[+b.dataset.lt];tick(n);noteWhere(n.id,'done',fixNow());save();setTimeout(renderNotes,220);});
   box.querySelectorAll('[data-lc]').forEach(b=>b.onclick=()=>{b.disabled=true;claudeTask(ts[+b.dataset.lc]);});
