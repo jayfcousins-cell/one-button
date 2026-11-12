@@ -2,7 +2,7 @@
   "hosting": {
     "site": "one-button-jay",
     "public": ".",
-    "ignore": ["firebase.json", "**/.*", "**/.*/**", "**/node_modules/**", "*.md", "*.ps1"],
+    "ignore": ["firebase.json", "**/.*", "**/.*/**", "**/node_modules/**", "*.md", "*.ps1", "server/**", "LICENSE"],
     "headers": [
       { "source": "**/*.@(html|js|json)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
       { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
