@@ -136,7 +136,7 @@ async function shopSource(body) {
 // Tasks live as lists, one per person; the key says whose. Open routes (a shared space read
 // with a Weave token) fall back to Jay's.
 const ID_RE_T = /^[\w-]{1,80}$/;
-const TASK_FIELDS = ["text", "cat", "done", "ts", "updated", "subs", "due", "place", "deleted", "store", "doneAt", "every", "everyBy", "hist", "aisle", "noAlarm", "alarmSeen", "remind", "snooze", "project", "from", "routine", "note", "url", "ask"];
+const TASK_FIELDS = ["text", "cat", "done", "ts", "updated", "subs", "due", "place", "deleted", "store", "doneAt", "every", "everyBy", "hist", "aisle", "noAlarm", "alarmSeen", "remind", "snooze", "project", "from", "routine", "note", "url", "ask", "hold"];
 
 function cleanTask(t) {
   const o = { id: String(t.id) };
@@ -422,8 +422,9 @@ async function ivAnswer(body) {
   const batch = admin.firestore().batch();
   tasks.forEach((t, i) => {
     const tid = String(now + i);
+    // Tasks Claude proposes wait in the main app until Jay puts them on the front page or in a project.
     batch.set(listRef().collection("tasks").doc(tid), cleanTask({
-      id: tid, text: String(t.text), cat: "do", done: false, ts: now + i, updated: now, subs: [], due: String(t.due || ""), place: "",
+      id: tid, text: String(t.text), cat: "do", done: false, ts: now + i, updated: now, subs: [], due: String(t.due || ""), place: "", ask: askId, hold: true,
     }));
   });
   batch.update(listRef().collection("asks").doc(askId), {
@@ -618,7 +619,19 @@ async function spServe(slug, s) {
   const hidden = new Set((d.convs || []).filter((c) => c.held).map((c) => c.id));
   const shown = (x) => keep(x) && !hidden.has(x.from);
   const projects = (d.projects || []).filter(keep).map((p) => ({ ...p, convs: (p.convs || []).filter((c) => !hidden.has(c)) }));
-  return [200, { ...d, banner: "", docs: (d.docs || []).filter(shown), convs: (d.convs || []).filter(keep), tasks: (d.tasks || []).filter(shown), projects }];
+  // Live tasks Jay has put in a project of this space show under that project, straight from his list.
+  const live = [];
+  try {
+    const saved = (await listRef().collection("projects").get()).docs.map((x) => x.data());
+    const byKey = new Map(saved.map((p) => [projKey(p.name), p.id]));
+    const want = new Map(projects.map((p) => [byKey.get(projKey(p.name)), p.id]).filter(([k]) => k));
+    if (want.size) {
+      const ts = (await listRef().collection("tasks").get()).docs.map((x) => x.data());
+      for (const t of ts) if (!t.deleted && t.project && want.has(t.project) && !(t.done && Date.now() - (t.doneAt || 0) > 14 * 864e5))
+        live.push({ who: "jay", text: String(t.text || ""), done: !!t.done, from: "", due: String(t.due || ""), held: "", project: want.get(t.project), live: true });
+    }
+  } catch {}
+  return [200, { ...d, banner: "", docs: (d.docs || []).filter(shown), convs: (d.convs || []).filter(keep), tasks: [...(d.tasks || []).filter(shown), ...live], projects }];
 }
 
 /* Projects Jay stewards. Saved ones live in projects/{id}; the rest are proposals, worked out fresh
@@ -682,6 +695,9 @@ async function projSave(body) {
     seed: String(p.seed || "").slice(0, 80), parent: /^p[0-9a-z]{4,20}$/.test(p.parent || "") && p.parent !== id ? p.parent : "", build: String(p.build || "").slice(0, 40), link: /^https:\/\//.test(p.link || "") ? String(p.link).slice(0, 300) : "",
     from: (Array.isArray(p.from) ? p.from : []).map(String).filter((x) => ID_RE.test(x)).slice(0, 50),
     people: (Array.isArray(p.people) ? p.people : []).map((x) => String(x).slice(0, 60)).slice(0, 20),
+    // Pages and documents made for this project: title, link, when, and whether Jay has shared it yet.
+    links: (Array.isArray(p.links) ? p.links : []).filter((l) => l && /^https:\/\//.test(String(l.url || ""))).slice(0, 40)
+      .map((l) => ({ title: String(l.title || "").slice(0, 120), url: String(l.url).slice(0, 400), at: Number(l.at) || Date.now(), by: String(l.by || "").slice(0, 40), shared: !!l.shared })),
     created: had.exists ? had.data().created : Date.now(), updated: Date.now(),
   };
   await ref.set(out);

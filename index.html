@@ -516,7 +516,7 @@ function save(){ LS.set('ob-notes',notes); queueSync(); syncAlarms(); }
 
 /* Sync (stage 1): the server keeps the master copy so phone and browser agree. Per task, the
  * latest change wins. Coordinates never go up: they live in WHERE, on this device only. */
-const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt','every','everyBy','hist','aisle','noAlarm','alarmSeen','remind','snooze','project','from','routine','note','url','ask'];
+const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt','every','everyBy','hist','aisle','noAlarm','alarmSeen','remind','snooze','project','from','routine','note','url','ask','hold'];
 function syncShape(n){const o={id:String(n.id)};SYNC_FIELDS.forEach(k=>{if(n[k]!==undefined)o[k]=n[k];});return o;}
 function syncSig(n){return JSON.stringify(syncShape({...n,updated:0}));}
 let synced=LS.get('ob-synced',{}); // id -> what the server last agreed on
@@ -817,6 +817,14 @@ function renderNotes(){
   const list=$('#notes-list');
   let items=notes.filter(n=>!n.done && !n.deleted && onList(n) && (filter==='all'||n.cat===filter));
   list.innerHTML='';
+  // Tasks that arrived from Claude or a conversation wait here, off the front page, until Jay
+  // places each one: on the front, in a project (tap it), or gone.
+  const waiting=items.filter(n=>n.hold);items=items.filter(n=>!n.hold);
+  if(waiting.length&&filter==='all'){const hd=document.createElement('div');hd.className='iv-h';hd.textContent='Decide where these go';list.appendChild(hd);
+    for(const n of waiting){const row=noteRow(n);const b=document.createElement('button');b.className='tbtn';b.textContent='Front page';b.style.margin='0 0 8px 28px';
+      b.onclick=()=>{n.hold=false;n.updated=Date.now();save();renderNotes();showToast('On the front page');};
+      list.appendChild(row);list.appendChild(b);}
+    const hd2=document.createElement('div');hd2.className='iv-h';hd2.style.marginTop='18px';hd2.textContent='On the front page';list.appendChild(hd2);}
   // The projects ticked for the main screen come first, each with its own to-dos under it;
   // everything else follows by kind of action.
   const top=document.documentElement.classList.contains('backend')?[]:PROJ.projects.filter(p=>p.main&&projLive(p)),inTop=new Set();
@@ -1106,6 +1114,7 @@ function renderP1(){const p=PROJ.projects.find(x=>x.id===P1.id)||P1;P1=p;$('#p1-
   $('#p1-body').innerHTML=`<button class="p1-speak" id="p1-speak">${isBuild(p)?'Speak a change to this build':'Speak to this project'}</button><div class="note" id="p1-status"></div>
     ${pa.length?`<div class="iv-h">With Claude</div>${pa.map(askCard).join('')}`:''}
     ${p.link?`<p><a href="${escapeHtml(p.link)}" target="_blank" rel="noopener">Open ${escapeHtml(p.name)}</a></p>`:''}
+    ${(p.links||[]).length?`<div class="iv-h">Pages and documents</div>${p.links.map((l,i)=>`<div class="iv-li"><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.title||l.url)}</a> <span class="iv-tag">${l.shared?'shared':(p.people||[]).length?'not yet shared with '+escapeHtml(p.people.join(', ')):'yours'}</span>${!l.shared&&(p.people||[]).length?` <button class="tbtn" data-lshared="${i}">Mark shared</button>`:''}</div>`).join('')}`:''}
     ${vaultHtml(p)}
     <div>${PROJ.statuses.map(s=>`<button class="chip${s===p.status?' on':''}" data-st="${s}">${s}</button>`).join('')}</div>
     <label class="iv-row" style="align-items:center;gap:8px;margin:10px 0"><input type="checkbox" id="p1-main" ${p.main?'checked':''} style="width:22px;height:22px"> On the main screen</label>
@@ -1125,6 +1134,7 @@ function renderP1(){const p=PROJ.projects.find(x=>x.id===P1.id)||P1;P1=p;$('#p1-
   b.querySelectorAll('[data-st]').forEach(x=>x.onclick=async()=>{await projSave({...p,status:x.dataset.st});renderP1();});
   $('#p1-main').onchange=e=>projSave({...p,main:e.target.checked});
   const put=async ch=>{await projSave({...p,...ch});renderP1();};
+  b.querySelectorAll('[data-lshared]').forEach(x=>x.onclick=()=>{const links=(p.links||[]).map((l,i)=>i===+x.dataset.lshared?{...l,shared:true}:l);put({links});});
   $('#p1-kind').onchange=e=>{const k=e.target.value.trim();if(k)put({kind:k});};
   b.querySelectorAll('[data-pk]').forEach(x=>x.onclick=()=>put({kind:cats[+x.dataset.pk]===p.kind?'':cats[+x.dataset.pk]}));
   $('#p1-name').onchange=e=>{const n=e.target.value.trim();if(n&&n!==p.name){$('#p1-title').textContent=n;put({name:n});}};
@@ -1478,19 +1488,22 @@ function lockClock(){const d=new Date();
 function renderLock(){
   if(!lock.classList.contains('on'))return;
   const items=notes.filter(n=>!n.done&&!n.deleted&&onList(n));
-  $('#lk-count').textContent=items.length?items.length+' open':'';
+  {const n=items.filter(x=>!x.hold).length;$('#lk-count').textContent=n?n+' open':'';}
   const lkPrs=lockProjects(),lkNeeds=!window.OB_BUILDS?[]:ASKS.filter(a=>a.kind==='app'&&['plan','preview'].includes(askStage(a)));
   if(!items.length&&!lkPrs.length){lkList.innerHTML='<div class="lk-empty">Nothing open. Tap the button and say what needs doing.</div>';return;}
   if(!LS.get('ob-lockfull',true)){lkList.innerHTML=`<div class="lk-empty">${items.length} ${items.length>1?'tasks':'task'} open. Open One Button to see them.</div>`;return;}
   // One closed row per kind of task (Buy, Fix, Check, Do); tap to open. Open rows are remembered.
   lkList.innerHTML='';
   // Anything waiting on Jay comes first, whatever project it is in.
-  if(lkNeeds.length){const box=document.createElement('div');box.className='lk-ready';
-    box.innerHTML=`<div class="lk-ready-t">Waiting on you</div>`+lkNeeds.map(askRow).join('');
+  // Pages made for a shared project that Jay has not yet shared with its people: a nudge until he has.
+  const lkShare=document.documentElement.classList.contains('backend')?PROJ.projects.flatMap(p=>(p.links||[]).filter(l=>!l.shared&&(p.people||[]).length).map(l=>({p,l}))).slice(0,4):[];
+  if(lkNeeds.length||lkShare.length){const box=document.createElement('div');box.className='lk-ready';
+    box.innerHTML=`<div class="lk-ready-t">Waiting on you</div>`+lkNeeds.map(askRow).join('')+lkShare.map(({p,l},i)=>`<div class="bl-row" style="cursor:default"><a class="bl-row-t" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">Share with ${escapeHtml((p.people||[]).join(', '))}: ${escapeHtml(l.title||p.name)}</a><button class="lk-cl" data-lkshared="${i}">Shared</button></div>`).join('');
+    box.querySelectorAll('[data-lkshared]').forEach(b=>b.onclick=()=>{const {p,l}=lkShare[+b.dataset.lkshared];l.shared=true;projSave(p);renderLock();});
     wireAskCards(box);lkList.appendChild(box);}
   const open=LS.get('ob-lockopen',{});
   // First the daily rhythm, then whatever belongs to the place the phone is at, then the kinds.
-  const loose=items.filter(n=>!inPr(n)),here=HERE?loose.filter(n=>!n.routine&&placeOf(n)&&placeOf(n).id===HERE.id):[];
+  const loose=items.filter(n=>!inPr(n)&&!n.hold),here=HERE?loose.filter(n=>!n.routine&&placeOf(n)&&placeOf(n).id===HERE.id):[];
   // Today first: what has a time today, in order, with the day's calendar events.
   const tday=dayKey(Date.now()),dueToday=items.filter(n=>!n.routine&&dueAt(n)&&dayKey(dueAt(n))===tday).sort((a,b)=>dueAt(a)-dueAt(b));
   const evToday=EVENTS.filter(e=>dayKey(e.begin)===tday&&(e.allDay||e.end>Date.now()));
@@ -1732,7 +1745,7 @@ function renderIv(){
     const mine=ASKS.filter(a=>a.interview===id);
     for(const a of mine){
       h+=`<div class="iv-li"><div class="iv-tag">${a.status==='done'?'Claude answered':'waiting for your laptop'}</div>${escapeHtml(a.text)}`;
-      if(a.status==='done') h+=`<div class="iv-ans">${escapeHtml(a.answer)}</div><div class="iv-row"><button class="tbtn" data-shareans="${escapeHtml(a.id)}">Share answer</button></div>${a.tasks?`<p class="note">Added ${a.tasks} task${a.tasks>1?'s':''} to your list.</p>`:''}`;
+      if(a.status==='done') h+=`<div class="iv-ans">${escapeHtml(a.answer)}</div><div class="iv-row"><button class="tbtn" data-shareans="${escapeHtml(a.id)}">Share answer</button></div>${a.tasks?`<p class="note">${a.tasks} task${a.tasks>1?'s':''} waiting in your list for you to place.</p>`:''}`;
       h+='</div>';
     }
     h+=`<p class="note">${s.collected?'In your vault: '+escapeHtml(s.folder||'Interviews'):'Goes to your vault, Interviews folder, next time your laptop is on.'}</p>`;
@@ -1893,7 +1906,7 @@ function renderClaude(){
   const a=fresh[0]||pend[0]; if(!a){box.innerHTML='';return;}
   const n=fresh.length?fresh.length:pend.length, done=a.status==='done';
   const tag=done?`Claude answered${n>1?' . '+n+' new':''}`:`Claude is working${n>1?' on '+n:''}`;
-  const body=done?`<div class="cl-ans">${escapeHtml(a.answer||'')}</div>${a.tasks?`<div class="iv-tag">+${a.tasks} task${a.tasks>1?'s':''} on your list</div>`:''}`
+  const body=done?`<div class="cl-ans">${escapeHtml(a.answer||'')}</div>${a.tasks?`<div class="iv-tag">${a.tasks} task${a.tasks>1?'s':''} waiting for you to place</div>`:''}`
     :`<div class="cl-ans">${escapeHtml(a.text||'')}</div><div class="iv-tag">your laptop picks it up within 5 minutes when it is on</div>`;
   box.innerHTML=`<div class="cl-strip" role="button" tabindex="0"><span class="cl-dot${done?' done':''}"></span><div class="cl-text"><div class="iv-tag">${tag}</div>${body}</div>${done?'<button class="cl-x" aria-label="Dismiss">&times;</button>':''}</div>`;
   const strip=box.firstChild;

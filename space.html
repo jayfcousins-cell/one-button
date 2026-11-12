@@ -228,10 +228,11 @@ $('#home-go').onclick=()=>{
 $('#projects').innerHTML=D.projects.map(p=>`<div class="box proj-card" id="proj-${p.id}">
   <span class="tag">${esc(p.status)}${p.held?' . held, only you see this: '+esc(p.held):''}</span><h3>${esc(p.name)}</h3><div>${esc(p.about)}</div>
   <div class="next"><span class="tag">Next step</span><br>${esc(p.next)}</div>
+  ${D.tasks.some(t=>t.project===p.id)?`<div class="who" style="margin-top:10px"><span class="tag">To do in this project</span>${D.tasks.filter(t=>t.project===p.id).map(t=>`<label class="task"><input type="checkbox" ${t.done?'checked':''} disabled><span>${t.done?'<s>':''}${esc(t.text)}${t.done?'</s>':''}<span class="tag">${t.due?esc(t.due):''}</span></span></label>`).join('')}</div>`:''}
   <p class="tag" style="margin:10px 0 0">From: ${p.convs.map(c=>esc(conv(c).title)).join(' . ')}</p></div>`).join('');
 
 const groups=[['both','Together'],[D.viewer,'You said you would'],['jay','Jay is doing']];
-$('#tasks').innerHTML=groups.map(([who,label])=>{const ts=D.tasks.filter(t=>t.who===who); if(!ts.length)return '';
+$('#tasks').innerHTML=groups.map(([who,label])=>{const ts=D.tasks.filter(t=>t.who===who&&!t.project); if(!ts.length)return '';
   return `<div class="who"><span class="tag">${label}</span>${ts.map(t=>`<label class="task"><input type="checkbox" ${t.done?'checked':''} ${who==='jay'?'disabled':''}>
     <span>${t.done?'<s>':''}${esc(t.text)}${t.done?'</s>':''}<span class="tag">${t.due?esc(t.due):''}${fromTag(t.from)}</span></span></label>`).join('')}</div>`;}).join('');
 
