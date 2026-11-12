@@ -202,6 +202,13 @@
   .chk input{width:20px;height:20px;accent-color:var(--ink)}
   .upd{display:block;text-align:center;margin:28px 0 4px;padding:12px;font-family:'IBM Plex Mono';font-size:11px;letter-spacing:1px;color:var(--muted);text-decoration:none;opacity:.6}
   .sheet.iv-card,#sheet-plan,#sheet-note{z-index:27}
+  .bl-row{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:8px 0;border:0;border-bottom:1px solid var(--line);background:none;color:inherit;text-align:left;cursor:pointer;font:400 15px "Inter",sans-serif}
+  .bl-row-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bl-row-s{flex:none;font:600 12px "IBM Plex Mono",monospace;color:var(--muted)}
+  .bl-row.need .bl-row-s{color:var(--forest-2,#2F5D3A)}
+  .lock .bl-row{border-color:rgba(255,255,255,.15)}
+  .lock .bl-row-s{color:rgba(255,255,255,.7)}
+  .lock .bl-row.need .bl-row-s{color:var(--spark)}
   .lk-cl{flex:none;min-height:44px;padding:0 12px;margin-right:6px;background:transparent;color:var(--spark);border:1px solid var(--spark);font:600 13px "Inter",sans-serif;cursor:pointer}
   .lk-pbody .lk-proj{padding-left:6px}
   .lk-text[role=button]{cursor:pointer}
@@ -1476,7 +1483,7 @@ function renderLock(){
   lkList.innerHTML='';
   // Anything waiting on Jay comes first, whatever project it is in.
   if(lkNeeds.length){const box=document.createElement('div');box.className='lk-ready';
-    box.innerHTML=lkNeeds.map(a=>`<div class="lk-ready-t">${askStage(a)==='plan'?'Plan ready for you':'Ready to try'}</div>`+askCard(a)).join('');
+    box.innerHTML=`<div class="lk-ready-t">Waiting on you</div>`+lkNeeds.map(askRow).join('');
     wireAskCards(box);lkList.appendChild(box);}
   const open=LS.get('ob-lockopen',{});
   // First the daily rhythm, then whatever belongs to the place the phone is at, then the kinds.
@@ -1523,7 +1530,7 @@ function lockProjects(){if(!window.OB_BUILDS)return PROJ.projects.filter(p=>proj
 function lockProjectBody(p,depth=0){const box=document.createElement('div');box.className='lk-pbody';
   const ts=p.id?tasksOf(p).filter(n=>!n.done&&!n.deleted):[],kids=p.id&&depth<3?kidsOf(p.id):[];
   const bs=ASKS.filter(a=>a.kind==='app'&&(a.project===p.id||(!a.project&&isBuild(p)))&&(askActive(a)||(askStage(a)==='live'&&!SEEN.includes(a.id)))).slice(0,3);
-  box.innerHTML=bs.map(askCard).join('')
+  box.innerHTML=bs.map(askRow).join('')
     +ts.map((n,i)=>{const a=ASKS.find(x=>x.id===n.ask),busy=a&&(a.kind==='app'?askActive(a):a.status!=='done'),meta=[whenOf(n),escapeHtml(taskAskLabel(a))].filter(Boolean).join(' . ');
       return `<div class="lk-item"><div class="lk-text" data-ln="${i}" role="button" tabindex="0">${escapeHtml(n.text)}${meta?`<div style="font-size:13px;opacity:.75;margin-top:2px">${meta}</div>`:''}</div>${busy?'':`<button class="lk-cl" data-lc="${i}" aria-label="Have Claude do this">Claude</button>`}<button class="lk-tick" data-lt="${i}" aria-label="Mark done">${ICON_TICK}</button></div>`;}).join('')
     +(!p.id&&!bs.length&&!ts.length&&!kids.length?'<div class="lk-empty" style="padding:10px 0">Nothing open here.</div>':'');
@@ -1920,7 +1927,13 @@ function askCard(a){const s=askStage(a),log=(a.log||[]).slice(-3),busy=['waiting
     ${s==='live'?`<p class="note">Updated. If you do not see the change yet, swipe One Button away and open it again.</p><div class="iv-row"><button class="tbtn" data-seen="${a.id}">Got it</button></div>`:''}
     ${s==='done'?`<div class="iv-ans">${escapeHtml(a.answer||'')}</div>`:''}
     ${s==='failed'?`<p class="note">${escapeHtml(a.shipNote||((a.log||[]).slice(-1)[0]||{}).s||'')}</p>`:''}</div>`;}
-function wireAskCards(box){const A=id=>ASKS.find(a=>a.id===id);
+function askRow(a){const s=askStage(a),need=['plan','preview','live','failed'].includes(s);
+  return `<button class="bl-row${need?' need':''}" data-arow="${a.id}"><span class="bl-row-t">${escapeHtml(askWords(a))}</span><span class="bl-row-s">${escapeHtml(STAGE_LABEL[s]||s)}</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>`;}
+function openAsk(a){if(!a)return;if(askStage(a)==='plan'){openPlan(a);return;}
+  PLAN_ASK=a;openSheet('#sheet-plan');$('#pl-title').textContent=STAGE_LABEL[askStage(a)]||'Claude';
+  const b=$('#pl-body');b.innerHTML=askCard(a);wireAskCards(b);}
+function wireAskCards(box){
+  box.querySelectorAll('[data-arow]').forEach(b=>b.onclick=()=>openAsk(ASKS.find(a=>a.id===b.dataset.arow)));const A=id=>ASKS.find(a=>a.id===id);
   box.querySelectorAll('[data-plan]').forEach(b=>b.onclick=()=>openPlan(A(b.dataset.plan)));
   box.querySelectorAll('[data-log]').forEach(b=>b.onclick=()=>openPlan(A(b.dataset.log),true));
   box.querySelectorAll('[data-try]').forEach(b=>b.onclick=()=>tryPreview(A(b.dataset.try)));
@@ -1964,7 +1977,7 @@ async function speakToProject(p,t){const f=p.vault&&p.vault.folder;
 function renderBuilds(){const box=$('#build-strip');
   // A change that has gone live stays as "Updated" until tapped Got it (for up to three days).
   if(box){const act=ASKS.filter(a=>askActive(a)||(a.kind==='app'&&askStage(a)==='live'&&!SEEN.includes(a.id)&&Date.now()-(a.shipped||0)<3*864e5)).slice(0,3);
-    box.innerHTML=act.map(askCard).join('');wireAskCards(box);}
+    box.innerHTML=act.map(askRow).join('');wireAskCards(box);}
   if($('#sheet-p1').classList.contains('open'))renderP1();
   renderProjBoard();renderLock();
   if($('#sheet-plan').classList.contains('open')&&PLAN_ASK){const a=ASKS.find(x=>x.id===PLAN_ASK.id);if(a&&$('#pl-title').textContent!=='Claude\'s plan')openPlan(a,true);}
