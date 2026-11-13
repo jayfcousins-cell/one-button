@@ -808,9 +808,15 @@ function handle(out,original){
   }
   if(out.action==='call'){
     rLabel.textContent='call';
-    rBody.textContent=`Call ${c.name}`;
-    if(c.phone) addAct('Call now','go',()=>location.href='tel:'+cleanNum(c.phone));
-    else rBody.textContent=`No phone number saved for ${c.name}.`;
+    const svc=/whatsapp/i.test(out.channel||'')?'whatsapp':/signal/i.test(out.channel||'')?'signal':/telegram/i.test(out.channel||'')?'telegram':'phone';
+    if(!c.phone&&!(svc==='telegram'&&c.tg)){rBody.textContent=`No phone number saved for ${c.name}.`;return;}
+    // Inside the app: the recorder starts, then the call goes out on speaker, so both sides are heard.
+    // Said as "call Simon": it just goes. The card stays so a different service is one tap away.
+    rBody.textContent=`Calling ${c.name}${svc!=='phone'?' on '+svc:''}${NATIVE&&NATIVE.placeCall?', recording':''}`;
+    if(NATIVE&&NATIVE.placeCall)callPerson(c,svc);
+    else addAct('Call now','go',()=>callPerson(c,svc));
+    for(const alt of ['phone','whatsapp','signal','telegram']){if(alt===svc)continue;if(alt==='telegram'?!c.tg:!c.phone)continue;
+      addAct(alt==='phone'?'Phone instead':alt[0].toUpperCase()+alt.slice(1)+' instead','alt',()=>callPerson(c,alt));}
     return;
   }
   rLabel.textContent='message';
@@ -827,6 +833,14 @@ function handle(out,original){
   }
 }
 function addAct(label,kind,fn){const b=document.createElement('button');b.className='pill '+kind;b.textContent=label;b.onclick=fn;rActs.appendChild(b);}
+// A call from One Button: inside the app the interview recorder starts first and the call is placed
+// on speaker, so the recording has both voices and is written up like any conversation, with the
+// person's name on it. In a browser it opens the dialler or the chat, no recording.
+function callPerson(c,svc){const num=cleanNum(c.phone),tg=(c.tg||'').replace('@','');
+  learn(c,svc==='phone'?'sms':svc);
+  if(NATIVE&&NATIVE.placeCall){try{NATIVE.startInterview();}catch{}
+    const target=svc==='telegram'?tg:num;setTimeout(()=>{try{NATIVE.placeCall(target,svc,c.name);}catch{showToast('Could not place the call');}},900);return;}
+  location.href=svc==='whatsapp'?`https://wa.me/${num.replace('+','')}`:svc==='signal'?`https://signal.me/#p/${num}`:svc==='telegram'?`https://t.me/${tg}`:'tel:'+num;}
 function gcal(o){
   const s=o.start?new Date(o.start):new Date(Date.now()+3600000);
   const e=new Date(s.getTime()+(o.minutes||60)*60000);
@@ -1652,6 +1666,13 @@ function lockRecord(){
 async function lockText(t){
       lock.classList.add('busy');
       {const s=await spendSaid(t);if(s){lock.classList.remove('busy');lkSay(s);return;}}
+      // "Call Simon", "ring Simon on WhatsApp": from the lock screen too, recorder first, then the call.
+      {const m=t.match(/^(?:please )?(?:call|ring|phone)\s+(.+?)(?:\s+on\s+(whatsapp|signal|telegram|the phone|phone))?[.!]?$/i);
+        if(m){const c=findContact(m[1]);lock.classList.remove('busy');
+          if(!c){lkSay(`I don't have "${m[1]}" yet; add them in Settings`);return;}
+          const svc=/whatsapp/i.test(m[2]||'')?'whatsapp':/signal/i.test(m[2]||'')?'signal':/telegram/i.test(m[2]||'')?'telegram':'phone';
+          if(!c.phone&&!(svc==='telegram'&&c.tg)){lkSay(`No number saved for ${c.name}`);return;}
+          lkSay(`Calling ${c.name}${svc!=='phone'?' on '+svc:''}${NATIVE&&NATIVE.placeCall?', recording':''}`);callPerson(c,svc);return;}}
       {const said=await toClaude(t);if(said){lock.classList.remove('busy');lkSay(said);return;}}
       {const r=rhythmFrom(t);if(r){const n=addRoutine(r.text,r.every);lock.classList.remove('busy');lkSay('added to your rhythm, '+everyWord(n.every));return;}}
       lkSay('adding...');
