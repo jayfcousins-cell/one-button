@@ -1893,12 +1893,17 @@ let SPACES=LS.get('ob-spaces',[]);
 async function spRefresh(){
   if(!obKey())return;
   try{const r=await fetch(API+'/api/space/list',{method:'POST',headers:obHeaders(),body:'{}'});
-    if(!r.ok)return; SPACES=(await r.json()).spaces||[]; LS.set('ob-spaces',SPACES); renderSpaces(); if(ivOpen)renderIv();
+    if(!r.ok)return; const d=await r.json(); SPACES=d.spaces||[]; WITH_ME=d.withMe||[]; LS.set('ob-spaces',SPACES); LS.set('ob-withme',WITH_ME); renderSpaces(); if(ivOpen)renderIv();
   }catch{}
 }
+let WITH_ME=LS.get('ob-withme',[]);
 function renderSpaces(){
-  // Also on the main list, above the tasks, so each space is one tap away.
-  const strip=$('#sp-strip'); strip.innerHTML=SPACES.length?`<div class="iv-h" style="margin-top:0">Shared spaces</div>`:'';
+  // Also on the main list, above the tasks, so each space is one tap away. Spaces someone else
+  // opened with this person come first: the conversations, projects and tasks both generated.
+  const strip=$('#sp-strip'); strip.innerHTML=(SPACES.length||WITH_ME.length)?`<div class="iv-h" style="margin-top:0">Shared spaces</div>`:'';
+  for(const sp of WITH_ME){const row=document.createElement('div');row.className='iv-row';row.style.alignItems='center';
+    row.innerHTML=`<span style="flex:1">${escapeHtml(sp.name)} and you<span class="iv-tag">${sp.convs} conversation${sp.convs===1?'':'s'} . ${sp.tasks} tasks</span></span><button class="tbtn">Open</button>`;
+    row.querySelector('button').onclick=()=>spOpen(sp);strip.appendChild(row);}
   for(const sp of SPACES){const row=document.createElement('div');row.className='iv-row';row.style.alignItems='center';
     row.innerHTML=`<span style="flex:1">Jay and ${escapeHtml(sp.name)}<span class="iv-tag">${sp.joined?'joined':'not joined yet'}</span></span><button class="tbtn">Open</button><button class="tbtn">Send link</button>${sp.joined?'<button class="tbtn">Sign-in code</button>':''}`;
     const [o,sn,cd]=row.querySelectorAll('button'); o.onclick=()=>spOpen(sp); sn.onclick=e=>spSend(sp,e.target); if(cd)cd.onclick=e=>spCode(sp,e.target);
@@ -1910,7 +1915,7 @@ function renderSpaces(){
     row.querySelector('.tbtn').onclick=e=>spSend(sp,e.target);
     box.appendChild(row);}
 }
-function spOpen(sp){openSheet('#sheet-space');$('#sp-title').textContent='Jay and '+sp.name;$('#sp-frame').src='/space.html?s='+encodeURIComponent(sp.slug);}
+function spOpen(sp){openSheet('#sheet-space');$('#sp-title').textContent=sp.host?sp.name+' and you':'Jay and '+sp.name;$('#sp-frame').src='/space.html?s='+encodeURIComponent(sp.slug);}
 async function spSend(sp,btn){
   if(btn)btn.disabled=true;
   try{const r=await fetch(API+'/api/space/invite',{method:'POST',headers:obHeaders(),body:JSON.stringify({slug:sp.slug})});

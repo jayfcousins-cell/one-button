@@ -594,13 +594,39 @@ async function spSave(body) {
 
 async function spList() {
   const docs = (await listRef().collection("spaces").get()).docs.map((d) => d.data());
-  return { spaces: docs.map((s) => ({ slug: s.slug, person: s.person, name: s.name, updated: s.updated, joined: !!s.joined,
-    convs: ((s.data && s.data.convs) || []).length, tasks: ((s.data && s.data.tasks) || []).length })) };
+  const mine = docs.map((s) => ({ slug: s.slug, person: s.person, name: s.name, updated: s.updated, joined: !!s.joined,
+    convs: ((s.data && s.data.convs) || []).length, tasks: ((s.data && s.data.tasks) || []).length }));
+  // And the spaces others host with this person in them: the same conversations, projects and
+  // tasks both people generated, seen from the member's side.
+  const withMe = (await spacesForMe()).map(({ host, snap }) => { const s = snap.data(), d = s.data || {};
+    return { slug: s.slug, person: host, name: host[0].toUpperCase() + host.slice(1), host, updated: s.updated, joined: true,
+      convs: (d.convs || []).filter((c) => !c.held).length, tasks: (d.tasks || []).filter((t) => !t.held).length }; });
+  return { spaces: mine, withMe };
 }
 
 async function spGet(body) {
-  const s = await spaceRef(String(body.slug || "")).get();
-  return s.exists ? [200, s.data().data] : [404, { error: "no such space" }];
+  const slug = String(body.slug || "");
+  const s = await spaceRef(slug).get();
+  if (s.exists) return [200, s.data().data];
+  // Not mine: a space someone else opened for me shows the member's view, held parts removed.
+  const shared = await spaceForMe(slug);
+  return shared ? spServe(slug, shared) : [404, { error: "no such space" }];
+}
+// Spaces other people host that name this person. Hosts are the lists that have spaces; today
+// that is Jay's, so the lookup stays small and needs no index.
+const HOSTS = ["jay"];
+async function spacesForMe() {
+  const me = who().name, out = [];
+  for (const h of HOSTS) {
+    if (h === me) continue;
+    const q = await admin.firestore().collection("onebutton_lists").doc(h).collection("spaces").where("person", "==", me).get();
+    for (const d of q.docs) out.push({ host: h, snap: d });
+  }
+  return out;
+}
+async function spaceForMe(slug) {
+  const hit = (await spacesForMe()).find((x) => x.snap.id === slug);
+  return hit ? hit.snap : null;
 }
 
 // The link Jay sends. First time: the community is made and a one-time invitation minted for
@@ -764,7 +790,8 @@ async function projList() {
     known.add(k);
     proposed.push({ id: "", name: String(a.text).slice(0, 80), about: String(a.answer || "").slice(0, 600), status: "Exploring", source: "claude", from: a.interview ? [a.interview] : [], created: a.created, answered: a.status === "done" });
   }
-  for (const g of await gardenSeeds()) {
+  // The Idea Garden is Jay's; its seeds are offered to his list only, never to another person's.
+  for (const g of who().name === "jay" ? await gardenSeeds() : []) {
     const k = projKey(g.name);
     if (!k || known.has(k)) continue;
     known.add(k);
