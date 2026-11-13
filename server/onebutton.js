@@ -136,7 +136,7 @@ async function shopSource(body) {
 // Tasks live as lists, one per person; the key says whose. Open routes (a shared space read
 // with a Weave token) fall back to Jay's.
 const ID_RE_T = /^[\w-]{1,80}$/;
-const TASK_FIELDS = ["text", "cat", "done", "ts", "updated", "subs", "due", "place", "deleted", "store", "doneAt", "every", "everyBy", "hist", "aisle", "noAlarm", "alarmSeen", "remind", "snooze", "project", "from", "routine", "note", "url", "ask", "hold", "photo"];
+const TASK_FIELDS = ["text", "cat", "done", "ts", "updated", "subs", "due", "place", "deleted", "store", "doneAt", "every", "everyBy", "hist", "aisle", "noAlarm", "alarmSeen", "remind", "snooze", "project", "from", "routine", "note", "url", "ask", "hold", "photo", "by"];
 
 function cleanTask(t) {
   const o = { id: String(t.id) };
@@ -155,22 +155,99 @@ function cleanTask(t) {
 async function sync(body) {
   const db = admin.firestore();
   const col = listRef().collection("tasks");
-  const changes = (Array.isArray(body.changes) ? body.changes : [])
+  const me = who().name;
+  // Projects shared with me and accepted: their tasks live in the owner's list. They come back
+  // with mine, and a change to one of them goes to the owner's list, marked with who made it.
+  const shared = await acceptedShares(me);
+  const ownerOf = new Map(shared.map((s) => [s.project, s.from]));
+  const sharedTasks = [];
+  for (const s of shared) {
+    const q = await db.collection("onebutton_lists").doc(s.from).collection("tasks").where("project", "==", s.project).get();
+    for (const d of q.docs) sharedTasks.push({ ...d.data(), sharedFrom: s.from });
+  }
+  const sharedIds = new Map(sharedTasks.map((t) => [String(t.id), t.sharedFrom]));
+  const all = (Array.isArray(body.changes) ? body.changes : [])
     .filter((c) => c && c.id !== undefined && /^[\w-]{1,64}$/.test(String(c.id)))
     .slice(0, 400)
     .map(cleanTask);
-  if (changes.length) {
+  const groups = new Map(); // list name -> changes
+  for (const c of all) {
+    const owner = sharedIds.get(c.id) || (c.project && ownerOf.get(c.project)) || null;
+    const key = owner || "";
+    if (owner) { c.by = me; if (!sharedIds.has(c.id)) c.project = c.project || ""; }
+    (groups.get(key) || groups.set(key, []).get(key)).push(c);
+  }
+  for (const [owner, changes] of groups) {
+    const target = owner ? db.collection("onebutton_lists").doc(owner).collection("tasks") : col;
     await db.runTransaction(async (tx) => {
-      const refs = changes.map((c) => col.doc(c.id));
+      const refs = changes.map((c) => target.doc(c.id));
       const snaps = await tx.getAll(...refs);
       snaps.forEach((snap, i) => {
         const cur = snap.exists ? snap.data() : null;
+        // A member may only touch tasks inside the shared project, never anything else of the owner's.
+        if (owner && cur && cur.project !== changes[i].project) return;
         if (!cur || (changes[i].updated || 0) >= (cur.updated || 0)) tx.set(refs[i], changes[i]);
       });
     });
   }
-  return (await col.get()).docs.map((d) => d.data());
+  const mine = (await col.get()).docs.map((d) => d.data());
+  if (!shared.length) return mine;
+  const fresh = [];
+  for (const s of shared) {
+    const q = await db.collection("onebutton_lists").doc(s.from).collection("tasks").where("project", "==", s.project).get();
+    for (const d of q.docs) fresh.push({ ...d.data(), sharedFrom: s.from });
+  }
+  return [...mine, ...fresh];
 }
+
+/* Sharing a project, with consent on both sides. The owner offers it to a person by name; it
+ * appears on that person's side as an offer; nothing enters their list until they accept. Once
+ * accepted, the project and its tasks show in both lists, the tasks living with the owner, each
+ * marked with who added it. Either side can end it; nothing of the owner's is deleted. */
+const sharesRef = () => admin.firestore().collection("onebutton_shares");
+async function acceptedShares(name) {
+  const q = await sharesRef().where("to", "==", name).where("status", "==", "accepted").get();
+  return q.docs.map((d) => d.data());
+}
+async function shareOffer(body) {
+  const project = String(body.project || ""), to = String(body.to || "").toLowerCase().trim();
+  if (!/^p[0-9a-z]{4,20}$/.test(project) || !NAME_RE.test(to)) return [400, { error: "bad request" }];
+  const me = who().name;
+  if (to === me) return [400, { error: "that is you" }];
+  const p = await listRef().collection("projects").doc(project).get();
+  if (!p.exists) return [404, { error: "no such project" }];
+  const person = await admin.firestore().collection("onebutton_people").doc(to).get();
+  if (!person.exists || person.data().revoked) return [404, { error: "no one called " + to + " has a One Button yet" }];
+  const have = await sharesRef().where("project", "==", project).where("to", "==", to).limit(1).get();
+  const id = have.empty ? "sh" + Date.now().toString(36) : have.docs[0].id;
+  const rec = { id, project, name: p.data().name, from: me, to, status: "offered", at: Date.now(), answered: 0 };
+  await sharesRef().doc(id).set(rec);
+  return [200, rec];
+}
+async function shareList() {
+  const me = who().name;
+  const made = (await sharesRef().where("from", "==", me).get()).docs.map((d) => d.data()).filter((s) => s.status !== "ended");
+  const got = (await sharesRef().where("to", "==", me).get()).docs.map((d) => d.data()).filter((s) => s.status !== "ended");
+  for (const s of got) { try { const p = await admin.firestore().collection("onebutton_lists").doc(s.from).collection("projects").doc(s.project).get(); if (p.exists) { s.name = p.data().name; s.about = String(p.data().about || "").slice(0, 400); } } catch {} }
+  return [200, { made, got }];
+}
+async function shareAnswer(body) {
+  const id = String(body.id || ""), me = who().name;
+  if (!ID_RE.test(id)) return [400, { error: "bad id" }];
+  const ref = sharesRef().doc(id), s = await ref.get();
+  if (!s.exists || s.data().to !== me) return [404, { error: "no such offer" }];
+  await ref.update({ status: body.accept ? "accepted" : "declined", answered: Date.now() });
+  return [200, { id, status: body.accept ? "accepted" : "declined" }];
+}
+async function shareEnd(body) {
+  const id = String(body.id || ""), me = who().name;
+  if (!ID_RE.test(id)) return [400, { error: "bad id" }];
+  const ref = sharesRef().doc(id), s = await ref.get();
+  if (!s.exists || (s.data().to !== me && s.data().from !== me)) return [404, { error: "no such share" }];
+  await ref.update({ status: "ended", ended: Date.now(), endedBy: me });
+  return [200, { id, status: "ended" }];
+}
+const SHARE_ROUTES = { offer: shareOffer, list: shareList, answer: shareAnswer, end: shareEnd };
 
 // Interviews (stage 7). The phone sends one recording only when Jay taps Process. Audio sits
 // in Storage under onebutton/ (rules deny all), the note in Firestore, until the laptop helper
@@ -797,7 +874,14 @@ async function projList() {
     known.add(k);
     proposed.push(g);
   }
-  return { projects: saved.sort((a, b) => (b.updated || 0) - (a.updated || 0)), proposed, statuses: PROJ_STATUS };
+  // Projects others have shared with me and I have accepted: linked, read from the owner's list,
+  // shown on the main screen so they are one tap away.
+  const linked = [];
+  for (const s of await acceptedShares(who().name)) {
+    try { const p = await admin.firestore().collection("onebutton_lists").doc(s.from).collection("projects").doc(s.project).get();
+      if (p.exists) linked.push({ ...p.data(), main: true, sharedFrom: s.from, share: s.id, people: [...new Set([...(p.data().people || []), s.from])] }); } catch {}
+  }
+  return { projects: [...saved, ...linked].sort((a, b) => (b.updated || 0) - (a.updated || 0)), proposed, statuses: PROJ_STATUS };
 }
 // Every seed in Jay's Idea Garden (the live map of his projects), read from its published data
 // and kept for an hour. Offered as projects he can take on; nothing is copied until he does.
@@ -822,6 +906,8 @@ async function projSave(body) {
   const name = String(p.name || "").trim().slice(0, 120);
   if (!name) return [400, { error: "no name" }];
   const id = /^p[0-9a-z]{4,20}$/.test(p.id || "") ? p.id : "p" + Date.now().toString(36);
+  // A project shared with me stays the owner's; it is never copied into my list by a save.
+  if ((await acceptedShares(who().name)).some((s) => s.project === id)) return [403, { error: "shared project: only its owner can change it" }];
   const ref = listRef().collection("projects").doc(id), had = await ref.get();
   const out = {
     id, name, about: String(p.about || "").slice(0, 2000), status: PROJ_STATUS.includes(p.status) ? p.status : "Idea",
@@ -919,6 +1005,11 @@ async function routed(req, res, body, sp, send, me) {
     }
     if (sp && SP_ROUTES[sp[1]]) {
       try { send(await SP_ROUTES[sp[1]](body)); } catch (e) { res.status(500).json({ error: String((e && e.message) || e) }); }
+      return;
+    }
+    const sh = req.path.match(/\/share\/(offer|list|answer|end)$/);
+    if (sh) {
+      try { send(await SHARE_ROUTES[sh[1]](body)); } catch (e) { res.status(500).json({ error: String((e && e.message) || e) }); }
       return;
     }
     const pr = req.path.match(/\/project\/(list|save)$/);

@@ -527,7 +527,7 @@ function save(){ LS.set('ob-notes',notes); queueSync(); syncAlarms(); }
 
 /* Sync (stage 1): the server keeps the master copy so phone and browser agree. Per task, the
  * latest change wins. Coordinates never go up: they live in WHERE, on this device only. */
-const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt','every','everyBy','hist','aisle','noAlarm','alarmSeen','remind','snooze','project','from','routine','note','url','ask','hold','photo'];
+const SYNC_FIELDS=['text','cat','done','ts','updated','subs','due','place','deleted','store','doneAt','every','everyBy','hist','aisle','noAlarm','alarmSeen','remind','snooze','project','from','routine','note','url','ask','hold','photo','by'];
 function syncShape(n){const o={id:String(n.id)};SYNC_FIELDS.forEach(k=>{if(n[k]!==undefined)o[k]=n[k];});return o;}
 function syncSig(n){return JSON.stringify(syncShape({...n,updated:0}));}
 let synced=LS.get('ob-synced',{}); // id -> what the server last agreed on
@@ -1003,7 +1003,16 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden){nativeDon
 let PROJ=LS.get('ob-proj',{projects:[],proposed:[],statuses:['Idea','Exploring','Active','Paused','Done','Dropped']});
 async function projRefresh(){if(!obKey())return;
   try{const r=await fetch(API+'/api/project/list',{method:'POST',headers:obHeaders(),body:'{}'});if(!r.ok)return;
-    PROJ=await r.json();LS.set('ob-proj',PROJ);projLoaded=true;renderProjMain();if($('#sheet-proj').classList.contains('open'))renderProj();fileByPerson();}catch{}}
+    PROJ=await r.json();LS.set('ob-proj',PROJ);projLoaded=true;renderProjMain();if($('#sheet-proj').classList.contains('open'))renderProj();fileByPerson();}catch{}
+  // Offers of projects, made and received. Nothing enters a list until the person says yes.
+  try{const r=await fetch(API+'/api/share/list',{method:'POST',headers:obHeaders(),body:'{}'});if(r.ok){OFFERS=await r.json();LS.set('ob-offers',OFFERS);renderLock();if($('#sheet-proj').classList.contains('open'))renderProj();}}catch{}}
+let OFFERS=LS.get('ob-offers',{made:[],got:[]});
+const offersForMe=()=>(OFFERS.got||[]).filter(o=>o.status==='offered');
+async function shareCall(route,body){const r=await fetch(API+'/api/share/'+route,{method:'POST',headers:obHeaders(),body:JSON.stringify(body)});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'failed');return d;}
+async function answerOffer(o,accept){try{await shareCall('answer',{id:o.id,accept});showToast(accept?'Added to your projects':'Left for now');await projRefresh();syncNow();}catch(e){showToast(e.message);}}
+const offerRow=o=>`<div class="bl-row" style="flex-wrap:wrap;cursor:default"><span class="bl-row-t" style="white-space:normal">${escapeHtml(o.from[0].toUpperCase()+o.from.slice(1))} offers you: ${escapeHtml(o.name||'a project')}${o.about?`<div style="font-size:13px;opacity:.75">${escapeHtml(o.about.slice(0,140))}</div>`:''}</span><button class="lk-cl" data-oyes="${escapeHtml(o.id)}">Accept</button><button class="tbtn" data-ono="${escapeHtml(o.id)}">Not now</button></div>`;
+function wireOffers(box){box.querySelectorAll('[data-oyes]').forEach(b=>b.onclick=()=>answerOffer(OFFERS.got.find(o=>o.id===b.dataset.oyes),true));
+  box.querySelectorAll('[data-ono]').forEach(b=>b.onclick=()=>answerOffer(OFFERS.got.find(o=>o.id===b.dataset.ono),false));}
 async function projSave(p){
   try{const r=await fetch(API+'/api/project/save',{method:'POST',headers:obHeaders(),body:JSON.stringify({project:p})});
     const d=await r.json();if(!r.ok)throw 0;
@@ -1124,7 +1133,10 @@ function renderProj(){const box=$('#proj-list');
     return `<div class="note-item">${kind==='mine'?`<input type="checkbox" class="pj-main" data-main="${i}" ${p.main?'checked':''} aria-label="Show on the main screen" style="width:22px;height:22px;margin-right:10px">`:''}
       <div class="ntext" data-${kind}="${i}">${escapeHtml(p.name)}<div class="nmeta">${meta}</div></div>
       ${kind==='mine'?'':`<button class="tbtn" data-take="${kind}:${i}">Steward</button><button class="tbtn" data-drop="${kind}:${i}">Not mine</button>`}</div>`;};
+  const offers=offersForMe(),later=(OFFERS.got||[]).filter(o=>o.status==='declined');
   box.innerHTML=`<p class="note">Tick a project to keep it on the main screen. Tap one to see its tasks and conversations.</p>
+    ${offers.length?`<div class="iv-h">Offered to you</div>${offers.map(offerRow).join('')}`:''}
+    ${later.length?`<details><summary class="nmeta" style="cursor:pointer">Offers you left for now (${later.length})</summary>${later.map(o=>`<div class="iv-li">${escapeHtml(o.name||'')} <small>from ${escapeHtml(o.from)}</small> <button class="tbtn" data-oyes="${escapeHtml(o.id)}">Accept</button></div>`).join('')}</details>`:''}
     <div class="iv-h">Stewarding</div>${live.map((p,i)=>row(p,i,'mine')).join('')||'<p class="note">None yet: take one on from below, or add one.</p>'}
     <div class="iv-row" style="margin:8px 0 14px"><input class="nd-when" id="pj-new" placeholder="Add a project" aria-label="Add a project" style="flex:1"></div>
     ${conv.length?`<div class="iv-h">Proposed from your conversations</div>${conv.map((p,i)=>row(p,i,'conv')).join('')}`:''}
@@ -1132,7 +1144,8 @@ function renderProj(){const box=$('#proj-list');
     ${gard.length?`<details style="margin-top:14px"><summary class="iv-h">From your Idea Garden (${gard.length})</summary>${[...new Set(gard.map(p=>p.kind||'Other'))].sort().map(k=>`<div class="nmeta" style="margin:12px 0 2px">${escapeHtml(k)}</div>`+gard.map((p,i)=>(p.kind||'Other')===k?row(p,i,'gard'):'').join('')).join('')}</details>`:''}
     ${rest.length?`<details style="margin-top:14px"><summary class="iv-h">Done and dropped (${rest.length})</summary>${rest.map((p,i)=>`<div class="note-item"><div class="ntext" data-rest="${i}">${escapeHtml(p.name)}<div class="nmeta">${escapeHtml(p.status)}</div></div></div>`).join('')}</details>`:''}`;
   const pick=k=>k==='conv'?conv:k==='gard'?gard:asks;
-  box.querySelectorAll('[data-main]').forEach(c=>c.onchange=()=>{const p=live[+c.dataset.main];projSave({...p,main:c.checked});});
+  wireOffers(box);
+  box.querySelectorAll('[data-main]').forEach(c=>c.onchange=()=>{const p=live[+c.dataset.main];if(p.sharedFrom){c.checked=true;showToast('Shared by '+p.sharedFrom+'; it stays on the main screen');return;}projSave({...p,main:c.checked});});
   box.querySelectorAll('[data-mine]').forEach(x=>x.onclick=()=>openProject(live[+x.dataset.mine]));
   box.querySelectorAll('[data-rest]').forEach(x=>x.onclick=()=>openProject(rest[+x.dataset.rest]));
   box.querySelectorAll('[data-conv],[data-ask],[data-gard]').forEach(x=>x.onclick=()=>{const k=x.dataset.conv!==undefined?'conv':x.dataset.gard!==undefined?'gard':'ask',p=pick(k)[+(x.dataset.conv??x.dataset.ask??x.dataset.gard)];
@@ -1150,7 +1163,11 @@ function renderP1(){const p=PROJ.projects.find(x=>x.id===P1.id)||P1;P1=p;$('#p1-
   const cats=[...new Set(PROJ.projects.map(x=>x.kind).filter(Boolean))].sort(),fam=familyOf(p.id),parents=PROJ.projects.filter(x=>projLive(x)&&!fam.has(x.id)),kids=kidsOf(p.id);
   const more=Object.entries(IVS).map(([id,s])=>({...s,id})).filter(s=>s.status==='done'&&!(p.from||[]).includes(s.id)).sort((a,b)=>(b.created||0)-(a.created||0)).slice(0,30);
   const convs=(p.from||[]).map(id=>({id,s:IVS[id]})).filter(c=>c.s),pa=ASKS.filter(a=>a.project===p.id).slice(0,6);
-  $('#p1-body').innerHTML=`<button class="p1-speak" id="p1-speak">${isBuild(p)?'Speak a change to this build':'Speak to this project'}</button><div class="note" id="p1-status"></div>
+  const madeHere=(OFFERS.made||[]).filter(o=>o.project===p.id);
+  $('#p1-body').innerHTML=`${p.sharedFrom?`<p class="note"><b>Shared by ${escapeHtml(p.sharedFrom)}.</b> Tasks here live with them; what you add carries your name. <button class="tbtn" id="p1-leave">Leave this project</button></p>`:''}
+    <button class="p1-speak" id="p1-speak">${isBuild(p)?'Speak a change to this build':'Speak to this project'}</button><div class="note" id="p1-status"></div>
+    ${!p.sharedFrom?`<div class="iv-row" style="align-items:center;margin:6px 0 10px"><input class="nd-when" id="p1-offer" placeholder="Offer to someone (their One Button name, e.g. simon)" aria-label="Offer this project to" style="flex:1"></div>
+      ${madeHere.length?`<p class="note">${madeHere.map(o=>escapeHtml(o.to)+': '+(o.status==='offered'?'offered, waiting':o.status)).join(' . ')}</p>`:''}`:''}
     ${pa.length?`<div class="iv-h">With Claude</div>${pa.map(askCard).join('')}`:''}
     ${p.link?`<p><a href="${escapeHtml(p.link)}" target="_blank" rel="noopener">Open ${escapeHtml(p.name)}</a></p>`:''}
     ${(p.links||[]).length?`<div class="iv-h">Pages and documents</div>${p.links.map((l,i)=>`<div class="iv-li"><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.title||l.url)}</a> <span class="iv-tag">${l.shared?'shared':(p.people||[]).length?'not yet shared with '+escapeHtml(p.people.join(', ')):'yours'}</span>${!l.shared&&(p.people||[]).length?` <button class="tbtn" data-lshared="${i}">Mark shared</button>`:''}</div>`).join('')}`:''}
@@ -1169,6 +1186,10 @@ function renderP1(){const p=PROJ.projects.find(x=>x.id===P1.id)||P1;P1=p;$('#p1-
     <div class="iv-h">Conversations</div>${convs.map((c,i)=>`<div class="note-item"><div class="ntext" data-pc="${i}">${escapeHtml(c.s.title||c.id)}<div class="nmeta">${(c.s.people||[]).length?'with '+escapeHtml(c.s.people.join(', ')):''}</div></div><button class="p1-x" data-pcx="${i}" aria-label="Take this conversation off the project">&times;</button></div>`).join('')||'<p class="note">None yet.</p>'}
     ${more.length?`<details><summary class="tbtn" style="display:inline-block;margin-top:6px">Add a conversation</summary>${more.map((s,i)=>`<div class="note-item"><div class="ntext" data-pca="${i}">${escapeHtml(s.title||s.id)}<div class="nmeta">${new Date(s.created||0).toLocaleDateString()}${(s.people||[]).length?' . with '+escapeHtml(s.people.join(', ')):''}</div></div></div>`).join('')}</details>`:''}`;
   const b=$('#p1-body');wireAskCards(b);
+  if(p.sharedFrom){b.querySelectorAll('input:not(#p1-offer),textarea,[data-st],[data-pk],[data-pp],#p1-main').forEach(x=>x.disabled=true);
+    $('#p1-leave').onclick=async()=>{try{await shareCall('end',{id:p.share});showToast('Left '+p.name);closeSheets();await projRefresh();syncNow();}catch(e){showToast(e.message);}};}
+  const of=$('#p1-offer');if(of)of.onchange=async()=>{const to=of.value.trim().toLowerCase();if(!to)return;
+    try{const o=await shareCall('offer',{project:p.id,to});showToast('Offered to '+o.to+'; it reaches them when they next open One Button');of.value='';await projRefresh();renderP1();}catch(e){showToast(e.message);}};
   $('#p1-speak').onclick=()=>speakOnce($('#p1-status'),async t=>{try{const a=await speakToProject(p,t);$('#p1-status').textContent=a.kind==='app'?'Sent. Claude will show you a plan first.':'Sent to Claude.';}catch{$('#p1-status').textContent='Could not send it';}});
   b.querySelectorAll('[data-st]').forEach(x=>x.onclick=async()=>{await projSave({...p,status:x.dataset.st});renderP1();});
   $('#p1-main').onchange=e=>projSave({...p,main:e.target.checked});
@@ -1563,9 +1584,11 @@ function renderLock(){
   // Anything waiting on Jay comes first, whatever project it is in.
   // Pages made for a shared project that Jay has not yet shared with its people: a nudge until he has.
   const lkShare=document.documentElement.classList.contains('backend')?PROJ.projects.flatMap(p=>(p.links||[]).filter(l=>!l.shared&&(p.people||[]).length).map(l=>({p,l}))).slice(0,4):[];
-  if(lkNeeds.length||lkShare.length){const box=document.createElement('div');box.className='lk-ready';
-    box.innerHTML=`<div class="lk-ready-t">Waiting on you</div>`+lkNeeds.map(askRow).join('')+lkShare.map(({p,l},i)=>`<div class="bl-row" style="cursor:default"><a class="bl-row-t" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">Share with ${escapeHtml((p.people||[]).join(', '))}: ${escapeHtml(l.title||p.name)}</a><button class="lk-cl" data-lkshared="${i}">Shared</button></div>`).join('');
+  const lkOffers=offersForMe().slice(0,3);
+  if(lkNeeds.length||lkShare.length||lkOffers.length){const box=document.createElement('div');box.className='lk-ready';
+    box.innerHTML=`<div class="lk-ready-t">Waiting on you</div>`+lkOffers.map(offerRow).join('')+lkNeeds.map(askRow).join('')+lkShare.map(({p,l},i)=>`<div class="bl-row" style="cursor:default"><a class="bl-row-t" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">Share with ${escapeHtml((p.people||[]).join(', '))}: ${escapeHtml(l.title||p.name)}</a><button class="lk-cl" data-lkshared="${i}">Shared</button></div>`).join('');
     box.querySelectorAll('[data-lkshared]').forEach(b=>b.onclick=()=>{const {p,l}=lkShare[+b.dataset.lkshared];l.shared=true;projSave(p);renderLock();});
+    wireOffers(box);
     wireAskCards(box);lkList.appendChild(box);}
   const open=LS.get('ob-lockopen',{});
   // First the daily rhythm, then whatever belongs to the place the phone is at, then the kinds.
@@ -1615,7 +1638,7 @@ function lockProjectBody(p,depth=0){const box=document.createElement('div');box.
   const ts=p.id?tasksOf(p).filter(n=>!n.done&&!n.deleted):[],kids=p.id&&depth<3?kidsOf(p.id):[];
   const bs=ASKS.filter(a=>a.kind==='app'&&(a.project===p.id||(!a.project&&isBuild(p)))&&(askActive(a)||(askStage(a)==='live'&&!SEEN.includes(a.id)))).slice(0,3);
   box.innerHTML=bs.map(askRow).join('')
-    +ts.map((n,i)=>{const a=ASKS.find(x=>x.id===n.ask),busy=a&&(a.kind==='app'?askActive(a):a.status!=='done'),meta=[whenOf(n),escapeHtml(taskAskLabel(a))].filter(Boolean).join(' . ');
+    +ts.map((n,i)=>{const a=ASKS.find(x=>x.id===n.ask),busy=a&&(a.kind==='app'?askActive(a):a.status!=='done'),meta=[whenOf(n),escapeHtml(taskAskLabel(a)),n.by?'by '+escapeHtml(n.by[0].toUpperCase()+n.by.slice(1)):''].filter(Boolean).join(' . ');
       return `<div class="lk-item"><div class="lk-text" data-ln="${i}" role="button" tabindex="0">${escapeHtml(n.text)}${meta?`<div style="font-size:13px;opacity:.75;margin-top:2px">${meta}</div>`:''}</div>${busy?'':`<button class="lk-cl" data-lc="${i}" aria-label="Have Claude do this">Claude</button>`}<button class="lk-tick" data-lt="${i}" aria-label="Mark done">${ICON_TICK}</button></div>`;}).join('')
     +(!bs.length&&!ts.length&&!kids.length?'<div class="lk-empty" style="padding:10px 0">Nothing open here.</div>':'')
     // One button per project on the lock screen: say a task for it, or "Claude, ..." to put Claude on it.
