@@ -260,6 +260,7 @@ async function clip(req) {
   if (tr.status !== 200) return [502, { error: "transcribe", text: "Could not make out the words" }];
   const t = (tr.json.text || "").trim();
   if (!t || words(t) < 1) return [200, { heard: "", text: "Heard nothing" }];
+  if (SPEND_RE.test(t)) { const [code, out] = await spend(t, { source: "button" }); return [code, { heard: t, ...out }]; }
   if (CLAUDE_RE.test(t) || APP_RE.test(t)) {
     const a = await newAsk(t.replace(CLAUDE_RE, ""), "", 0, {});
     return [200, { heard: t, ask: a.id, text: (a.kind === "app" ? "Change asked: " : "Asked Claude: ") + a.text.slice(0, 120) }];
@@ -343,6 +344,29 @@ async function photo(req) {
   }
   await listRef().collection("photos").doc(id).set(doc);
   return [200, out];
+}
+// Money said out loud: "just spent 120 at the market", "record a receipt for lunch, 300 EGP, split
+// with Simon", "add coffee to receipts for 40". One row in accounts, same shape as a photographed
+// receipt, with who it is split with. The laptop turns accounts into the spreadsheet.
+const SPEND_RE = /^(?:(?:i |i've |i have )?just (?:spent|paid)|record (?:a )?(?:receipt|spend|expense|payment)|add .{1,80}? to (?:the )?(?:receipts|accounts|expenses|spending)|spent|paid for|receipt for)\b/i;
+const SPEND_SYS = `Someone tells a phone what they just spent. Return ONLY JSON: {"total": number, "currency": "code or symbol as said, else empty", "shop": "where or who was paid, else empty", "what": "what it was for, a few words", "category": "food|transport|home|work|health|fun|gifts|other", "date": "YYYY-MM-DD only if a day is named, else empty", "split": ["first names it is shared or split with, if said"], "items": [{"name": "", "price": number}]}. Numbers as numbers. Never invent an amount; if none is said, total is 0.`;
+async function spend(text, opts = {}) {
+  text = String(text || "").trim().slice(0, 1000);
+  if (!text) return [400, { error: "nothing said", text: "Heard nothing" }];
+  let seen = null;
+  try { const out = JSON.parse((await chat({ messages: [{ role: "system", content: SPEND_SYS + " Today is " + new Date().toISOString().slice(0, 10) + "." }, { role: "user", content: text }] }, 600)).text); seen = parseJSON(out.choices[0].message.content); } catch {}
+  if (!seen) return [502, { error: "could not read it", text: "Could not make out the amount" }];
+  const num = (x) => Math.max(0, Number(x) || 0), created = Date.now(), id = "sp" + created.toString(36);
+  const rec = { id, created, source: opts.source || "voice", said: text, shop: String(seen.shop || "").slice(0, 120), what: String(seen.what || "").slice(0, 200),
+    category: ["food", "transport", "home", "work", "health", "fun", "gifts", "other"].includes(seen.category) ? seen.category : "other",
+    date: /^\d{4}-\d{2}-\d{2}$/.test(String(seen.date || "")) ? seen.date : new Date(created).toISOString().slice(0, 10),
+    total: num(seen.total), currency: String(seen.currency || "").slice(0, 8),
+    split: (Array.isArray(seen.split) ? seen.split : []).map((s) => String(s).slice(0, 40)).slice(0, 10),
+    items: (Array.isArray(seen.items) ? seen.items : []).slice(0, 30).map((i) => ({ name: String((i && i.name) || "").slice(0, 120), price: num(i && i.price) })) };
+  rec.month = rec.date.slice(0, 7);
+  await listRef().collection("accounts").doc(id).set(rec);
+  const who = rec.split.length ? ", split with " + rec.split.join(" and ") : "";
+  return [200, { ...rec, text: `Recorded ${rec.total || "an amount to fill in"} ${rec.currency}${rec.shop ? " at " + rec.shop : rec.what ? " for " + rec.what : ""}${who}` }];
 }
 // Recent photos and the month's accounts, for the app.
 async function photoList() {
@@ -854,6 +878,11 @@ async function routed(req, res, body, sp, send, me) {
         if (!(await checkRateLimit(DAILY_LIMIT, "ob_" + clientIp(req)))) { res.status(429).json({ error: "daily limit reached", text: "Daily limit reached" }); return; }
         send(await photo(req));
       } catch (e) { res.status(502).json({ error: String((e && e.message) || e), text: "Could not read the photo" }); }
+      return;
+    }
+    if (req.path.endsWith("/spend")) {
+      if (!(await checkRateLimit(DAILY_LIMIT, "ob_" + clientIp(req)))) { res.status(429).json({ error: "daily limit reached", text: "Daily limit reached" }); return; }
+      try { send(await spend(body.text, { source: "voice" })); } catch (e) { res.status(502).json({ error: String((e && e.message) || e), text: "Could not record it" }); }
       return;
     }
     if (req.path.endsWith("/clip")) {

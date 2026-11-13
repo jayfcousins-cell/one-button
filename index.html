@@ -700,6 +700,13 @@ const APP_CHANGE=t=>/\b((?:one|1)[ -]?button|the app|this app)\b/i.test(t)&&/\b(
 async function askClaudeDirect(text,extra={}){
   const r=await fetch(API+'/api/interview/ask',{method:'POST',headers:obHeaders(),body:JSON.stringify({text,...extra})});
   if(!r.ok)throw new Error('ask '+r.status);const a=await r.json();ASKS=[a,...ASKS];LS.set('ob-asks',ASKS);renderClaude();return a;}
+// Money said out loud ("just spent 120 at the market", "record a receipt for lunch, split with
+// Simon", "add coffee to receipts for 40") goes to the accounts, not the task list.
+const SPEND_RE=/^(?:(?:i |i've |i have )?just (?:spent|paid)|record (?:a )?(?:receipt|spend|expense|payment)|add .{1,80}? to (?:the )?(?:receipts|accounts|expenses|spending)|spent|paid for|receipt for)\b/i;
+async function spendSaid(t){if(!SPEND_RE.test(t))return '';
+  try{const r=await fetch(API+'/api/spend',{method:'POST',headers:obHeaders(),body:JSON.stringify({text:t})});const d=await r.json().catch(()=>({}));
+    if(!r.ok)return d.text||'Could not record it';PHOTOS=null;return d.text||'Recorded';}
+  catch{return 'Could not reach the server';}}
 // Words for Claude, from either button: a change to the app, or a request. Returns what to show, or '' if not for Claude.
 async function toClaude(t){
   if(APP_CHANGE(t)){const p=PROJ.projects.find(isBuild);
@@ -708,6 +715,7 @@ async function toClaude(t){
   if(FOR_CLAUDE.test(t)){try{await askClaudeDirect(t.replace(FOR_CLAUDE,'').trim()||t);return 'sent to Claude';}catch{return 'could not reach Claude, tap to try again';}}
   return '';}
 async function route(text){
+  {const s=await spendSaid(text);if(s){mainLive||(statusEl.textContent=s);return;}}
   {const said=await toClaude(text);if(said){mainLive||(statusEl.textContent=said);return;}}
   {const r=rhythmFrom(text);if(r){const n=addRoutine(r.text,r.every);mainLive||(statusEl.textContent='tap to speak');
     result.classList.add('show');rActs.innerHTML='';rLabel.textContent='added to your rhythm . '+everyWord(n.every);rBody.textContent=n.text;
@@ -1643,6 +1651,7 @@ function lockRecord(){
 // Words said on the lock screen: to Claude, or onto the list as tasks.
 async function lockText(t){
       lock.classList.add('busy');
+      {const s=await spendSaid(t);if(s){lock.classList.remove('busy');lkSay(s);return;}}
       {const said=await toClaude(t);if(said){lock.classList.remove('busy');lkSay(said);return;}}
       {const r=rhythmFrom(t);if(r){const n=addRoutine(r.text,r.every);lock.classList.remove('busy');lkSay('added to your rhythm, '+everyWord(n.every));return;}}
       lkSay('adding...');
@@ -2053,7 +2062,9 @@ async function renderPhotos(){const b=$('#photos-body');b.innerHTML='<p class="n
   const money=(m)=>`${Math.round(m.total*100)/100} ${escapeHtml(m.currency||'')}`;
   b.innerHTML=`<div class="iv-row" style="margin-bottom:12px"><button class="save" id="ph-take" style="margin:0">Take a photo</button></div>
     <p class="note">A receipt goes into the month's accounts and Claude looks at where the money went. A sketch becomes a plan. Anything else becomes a task to place.</p>
-    ${(PHOTOS.months||[]).length?`<div class="iv-h">Accounts</div>${PHOTOS.months.map(m=>`<div class="iv-li"><b>${escapeHtml(m.month)}</b> ${money(m)} <small>. ${m.count} receipt${m.count>1?'s':''}</small></div>`).join('')}`:''}
+    ${(PHOTOS.months||[]).length?`<div class="iv-h">Accounts</div>${PHOTOS.months.map(m=>`<div class="iv-li"><b>${escapeHtml(m.month)}</b> ${money(m)} <small>. ${m.count} entr${m.count>1?'ies':'y'}</small></div>`).join('')}
+      ${(PHOTOS.accounts||[]).slice(0,40).map(e=>`<div class="iv-li"><span class="iv-tag">${escapeHtml(e.date||'')}${e.category?' . '+escapeHtml(e.category):''}${e.source==='voice'||e.source==='button'?' . said':' . photo'}</span><br>${escapeHtml(e.shop||e.what||'')} <b>${e.total} ${escapeHtml(e.currency||'')}</b>${(e.split||[]).length?` <small>. split with ${escapeHtml(e.split.join(', '))}</small>`:''}</div>`).join('')}
+      <p class="note">Say "just spent 120 at the market" or "record a receipt for lunch, 300, split with Simon" into the button. The laptop keeps the spreadsheet in your vault, Accounts folder.</p>`:''}
     <div class="iv-h">Photos</div>${(PHOTOS.photos||[]).map(p=>{const a=ASKS.find(x=>x.id===p.ask);
       return `<div class="iv-li"><div class="iv-tag">${escapeHtml(p.kind)} . ${new Date(p.created).toLocaleDateString()}</div><b>${escapeHtml(p.title)}</b>
         ${p.receipt?`<div>${escapeHtml(p.receipt.shop||'')} ${p.receipt.total} ${escapeHtml(p.receipt.currency||'')}</div>`:''}
