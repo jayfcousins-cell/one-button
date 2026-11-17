@@ -825,7 +825,24 @@ const LISTEN_RE2=/^\s*(?:a\s+)?podcast\s+(?:around|about|on|of)\s+(.+?)[.?!\s]*$
 function openListen(q){if(lock.classList.contains('on'))hideLock();openSheet('#sheet-space');$('#sp-title').textContent='Listen';spFrame('/listen.html'+(q?'?q='+encodeURIComponent(q):''));}
 function listenFrame(){try{const f=$('#sp-frame').contentWindow;return $('#sheet-space').classList.contains('open')||window.OB_LISTEN?(f&&f.obListenSaid?f:null):null;}catch(e){return null;}}
 // Returns true when the words were for the listening session.
-function listenTake(text){const m=text.match(LISTEN_RE)||text.match(LISTEN_RE2);
+/* "Share One Button" (or "share One Button with Simon"): makes a single-use link to the app with a
+ * shared space already in it, plus the film, ready to send. With no name, whoever opens it names
+ * themselves. */
+const SHARE_RE=/^\s*(?:hey\s+)?(?:please\s+)?(?:share|send)\s+(?:the\s+|my\s+)?one[\s-]*button(?:\s+app)?(?:\s+(?:with|to)\s+(.+?))?[.?!\s]*$/i;
+const FILM_URL='https://one-button-jay.web.app/film.mp4';
+async function obShareApp(name){
+  try{const r=await fetch(API+'/api/person/invite',{method:'POST',headers:obHeaders(),body:JSON.stringify(name?{name}:{})});
+    const v=await r.json(); if(!r.ok)throw new Error(v.error||r.status);
+    const t=`${name?'Hi '+name.split(' ')[0]+', h':'H'}ere is One Button: one button you hold and speak into, and it turns what you say into tasks, notes and shared spaces. Tap this to get your own, with a space for the two of us already in it. It works once, on one phone, for 7 days: ${v.link}
+The short film about it: ${FILM_URL}`;
+    try{ivShareText(t);}catch(e){}
+    // Kept as a task too, in case the share sheet could not open (lock screen, no tap).
+    notes.unshift({id:Date.now(),text:'Send One Button'+(name?' to '+name:'')+': '+t,cat:'do',done:false,ts:Date.now(),subs:[],due:'',place:''});save();renderNotes();
+    showToast('One Button link ready'+(name?' for '+name:''));return 'link ready';
+  }catch(e){showToast('Could not make the link: '+e.message);return 'could not make the link';}
+}
+function listenTake(text){const sh=text.match(SHARE_RE);if(sh){obShareApp(sh[1]?sh[1].trim():'');return 'sharing';}
+  const m=text.match(LISTEN_RE)||text.match(LISTEN_RE2);
   if(m){openListen(m[1].trim());return 'listening';}
   const f=window.OB_LISTEN&&listenFrame();if(f&&f.obListenSaid(text))return 'done';return false;}
 // A comment said while listening: kept in the list with where it was said.
@@ -834,7 +851,7 @@ window.obListenComment=(text,w)=>{const at=w&&w.at?Math.floor(w.at/60)+':'+Strin
   const note={id:Date.now(),text:text+' (comment on '+where+')',cat:'check',done:false,ts:Date.now(),subs:[],due:'',place:''};
   notes.unshift(note);save();renderNotes();showToast('Comment kept: '+text.slice(0,60));};
 async function route(text){
-  {const l=listenTake(text);if(l){mainLive||(statusEl.textContent=l==='listening'?'gathering the key ideas…':'tap to speak');return;}}
+  {const l=listenTake(text);if(l){mainLive||(statusEl.textContent=l==='listening'?'gathering the key ideas…':l==='sharing'?'making your One Button link…':'tap to speak');return;}}
   if(viewSaid(text)){mainLive||(statusEl.textContent='tap to speak');return;}
   {const s=await spendSaid(text);if(s){mainLive||(statusEl.textContent=s);return;}}
   {const said=await toClaude(text);if(said){mainLive||(statusEl.textContent=said);return;}}
@@ -2158,7 +2175,7 @@ async function lockText(t){
       {const s=await spendSaid(t);if(s){lock.classList.remove('busy');lkSay(s);return;}}
       // "Call Simon", "ring Simon on WhatsApp": from the lock screen too, recorder first, then the call.
       if(viewSaid(t)){lock.classList.remove('busy');return;}
-      {const l=listenTake(t);if(l){lock.classList.remove('busy');lkSay(l==='listening'?'gathering the key ideas':'done');return;}}
+      {const l=listenTake(t);if(l){lock.classList.remove('busy');lkSay(l==='listening'?'gathering the key ideas':l==='sharing'?'making your One Button link':'done');return;}}
       {const m=t.match(new RegExp('^'+FILLER+/(?:call|ring|phone)\s+(.+?)(?:\s+on\s+(whatsapp|signal|telegram|the phone|phone))?[.!]?$/.source,'i'));
         if(m){lock.classList.remove('busy');
           const svc=/whatsapp/i.test(m[2]||'')?'whatsapp':/signal/i.test(m[2]||'')?'signal':/telegram/i.test(m[2]||'')?'telegram':/phone/i.test(m[2]||'')?'phone':'';
@@ -2449,7 +2466,8 @@ function ivShareText(t){
 async function spRefresh(){
   if(!obKey())return;
   try{const r=await fetch(API+'/api/space/list',{method:'POST',headers:obHeaders(),body:'{}'});
-    if(!r.ok)return; const d=await r.json(); SPACES=d.spaces||[]; WITH_ME=d.withMe||[]; LS.set('ob-spaces',SPACES); LS.set('ob-withme',WITH_ME); renderSpaces(); try{renderProjBoard();}catch{} if(ivOpen)renderIv();
+    if(!r.ok)return; const d=await r.json(); SPACES=d.spaces||[]; WITH_ME=d.withMe||[]; LS.set('ob-spaces',SPACES); LS.set('ob-withme',WITH_ME); renderSpaces();
+    {const w=LS.get('ob-open-space','');if(w){LS.set('ob-open-space','');const sp=WITH_ME.find(x=>x.slug===w);if(sp)spOpen(sp);}} try{renderProjBoard();}catch{} if(ivOpen)renderIv();
   }catch{}
 }
 function renderSpaces(){
@@ -2474,17 +2492,14 @@ function renderSpaces(){
 function spOpen(sp){SP_FROM=$('#sheet-ivs').classList.contains('open')?'#sheet-ivs':'';openSheet('#sheet-space');$('#sp-title').textContent=sp.host?sp.name+' and you':'Jay and '+sp.name;spFrame('/space.html?s='+encodeURIComponent(sp.slug));}
 async function spSend(sp,btn){
   if(btn)btn.disabled=true;
-  try{const r=await fetch(API+'/api/space/invite',{method:'POST',headers:obHeaders(),body:JSON.stringify({slug:sp.slug})});
-    const d=await r.json(); if(!r.ok)throw 0;
-    await spShare(sp.name,{...d,slug:d.slug||sp.slug});
-  }catch{showToast('Could not make the link, try again');}
+  await spShare(sp.name,{slug:sp.slug});
   if(btn)btn.disabled=false;
 }
 const spOf=p=>SPACES.find(sp=>[sp.person,String(sp.name).toLowerCase()].includes(String(p).toLowerCase()));
 // From a recording's card: makes the space if needed, adds this conversation, then shares the link.
 async function spSendPerson(name,interview,btn){
   if(btn)btn.disabled=true;
-  try{const r=await fetch(API+'/api/space/person',{method:'POST',headers:obHeaders(),body:JSON.stringify({name,interview})});
+  try{const r=await fetch(API+'/api/space/person',{method:'POST',headers:obHeaders(),body:JSON.stringify({name,interview,share:true})});
     const d=await r.json(); if(!r.ok)throw 0;
     await spShare(name,d); spRefresh();
   }catch{showToast('Could not make the link, try again');}
@@ -2497,14 +2512,14 @@ async function spKeepLink(slug){
   const d=await r.json(); if(!r.ok)throw 0;
   return `https://one-button-jay.web.app/space.html?s=${encodeURIComponent(slug)}#n=${encodeURIComponent(d.name)}&c=${encodeURIComponent(d.code)}`;
 }
+// One link does it all: spent once on their phone it gives them One Button with a key of their
+// own (their own list) and opens the space with Jay. Nothing secret is in the address.
 async function spShare(name,d){
-  const slug=d.slug||(spOf(name)||{}).slug;
-  const keep=d.joined&&slug?await spKeepLink(slug).catch(()=>''):'';
-  if(keep){ivShareText(`Our shared space: ${keep}
-Tap it on any phone or computer and you are in. It keeps working, so save it and keep it to yourself.`);return;}
-  ivShareText(d.joined?`Our shared space: ${d.link}
-Tap it on the phone or computer you want to use and you are in. Each link works on one device.`
-    :`Hi ${name}, I've set up a private space for our conversations: the notes and transcripts, the projects growing from them, and next steps. Tap the link and press Join. You'll be shown an account code once: save it, it signs you in on your other devices. ${d.link}`);
+  const sp=spOf(name)||{},slug=d.slug||sp.slug;
+  try{const r=await fetch(API+'/api/person/invite',{method:'POST',headers:obHeaders(),body:JSON.stringify({name:sp.person||name,slug})});
+    const v=await r.json(); if(!r.ok)throw new Error(v.error||r.status);
+    ivShareText(`Hi ${name}, here is One Button with our shared space already in it: the notes and transcripts from our conversations, the projects growing from them, and next steps. It is yours too, with your own list. Tap the link on your phone and you are in. It works once, on one phone, for 7 days. ${v.link}`);
+  }catch(e){showToast('Could not make the link: '+e.message);}
 }
 // Someone who joined but has no code (lost, or never saw it): a fresh one, ready to send them.
 async function spCode(sp,btn){
@@ -2968,10 +2983,16 @@ function boot(){
     document.body.insertBefore(c,document.body.firstChild);
     $('#signin-go').onclick=()=>{const v=$('#signin-link').value.trim(),m=v.match(/[?&]key=([\w-]{16,80})/)||v.match(/^([\w-]{16,80})$/);if(!m){showToast('That does not look like your link');return;}LS.set('ob-key',m[1]);location.reload();};}
   // A single-use link from Jay's own app: this device gets a key of its own and the link is spent.
+  // A single-use link: this device gets a key of its own and the link is spent. An open link (from
+  // "Share One Button") asks the newcomer's name first.
   {const c=new URLSearchParams(location.search).get('claim');if(c&&/^[\w-]{24}$/.test(c)){history.replaceState(null,'',location.pathname);
-    fetch(API+'/api/person/claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({claim:c})}).then(r=>r.json().then(d=>r.ok?d:Promise.reject(new Error(d.error||r.status))))
-      .then(d=>{LS.set('ob-key',d.key);showToast('This device is linked to your One Button');setTimeout(()=>location.reload(),900);})
-      .catch(e=>showToast('Could not link this device: '+e.message));}}
+    const claim=name=>fetch(API+'/api/person/claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(name?{claim:c,name}:{claim:c})}).then(r=>r.json().then(d=>r.ok||d.needName?d:Promise.reject(new Error(d.error||r.status))));
+    const done=d=>{LS.set('ob-key',d.key);if(d.space)LS.set('ob-open-space',d.space);showToast(d.person?'Welcome to One Button. Opening your shared space':'This device is linked to your One Button');setTimeout(()=>location.reload(),900);};
+    const ask=msg=>{let card=$('#claim-card');if(!card){card=document.createElement('div');card.id='claim-card';card.style.cssText='margin:12px 16px;padding:14px;border:2px solid var(--ink);background:var(--paper,#fff)';document.body.insertBefore(card,document.body.firstChild);}
+      card.innerHTML=`<div style="font-weight:700;margin-bottom:4px">Welcome to One Button</div><div class="nmeta" style="margin-bottom:8px">${escapeHtml(msg)}</div><div class="iv-row"><input class="nd-when" id="claim-name" placeholder="Your first name" aria-label="Your first name" autocomplete="off" style="flex:1"><button class="save" id="claim-go">Start</button></div>`;
+      $('#claim-go').onclick=()=>{const n=$('#claim-name').value.trim();if(!n)return;$('#claim-go').disabled=true;claim(n).then(d=>d.needName?ask(d.error):(card.remove(),done(d))).catch(e=>{showToast(e.message);$('#claim-go').disabled=false;});};};
+    claim('').then(d=>d.needName?ask('What should we call you? This is the name your shared spaces show.'):done(d))
+      .catch(e=>showToast('Could not open this link: '+e.message));}}
   renderNotes();
   statusEl.textContent='tap to speak';
   resetIdle();

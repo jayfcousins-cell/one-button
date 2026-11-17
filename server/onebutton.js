@@ -42,7 +42,7 @@ async function whoIs(req) {
   const q = await admin.firestore().collection("onebutton_people").where("hash", "==", h).limit(1).get();
   const p = q.empty ? null : q.docs[0].data();
   // A device key of Jay's own (list "jay", admin) acts as Jay; everyone else acts as themselves.
-  const person = p && !p.revoked ? { name: p.list === "jay" ? "jay" : p.name, device: p.name, list: p.list || p.name, trusted: !!p.trusted, site: p.site || "", admin: !!p.admin && p.list === "jay" } : null;
+  const person = p && !p.revoked ? { name: p.list === "jay" ? "jay" : (p.list || p.name), device: p.name, list: p.list || p.name, trusted: !!p.trusted, site: p.site || "", admin: !!p.admin && p.list === "jay" } : null;
   PEOPLE_CACHE.set(h, { person, at: Date.now() });
   return person;
 }
@@ -72,18 +72,63 @@ async function personLink(body) {
   PEOPLE_CACHE.clear();
   return [200, { device, link: OB_SITE + "/?claim=" + claim }];
 }
+/* A friend's way in: one single-use link that gives their phone a key of its own (a new person the
+ * first time, another device of theirs after that) and opens the space shared with them. Nothing
+ * secret travels in the address; the key is handed over once, when the link is spent. */
+// A space with Jay for someone new, empty until the first conversation or addition.
+async function ensureSpace(pid) {
+  const slug = "jay-" + pid, ref = spaceRef(slug);
+  if (!SLUG_RE.test(slug) || (await ref.get()).exists) return slug;
+  const name = pid.split("-").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+  await ref.set({ slug, person: pid, name, updated: Date.now(), data: {
+    banner: "Your view of the space with " + name + ". Anything marked Held is hidden from " + name + ".",
+    people: [{ id: "jay", name: "Jay" }, { id: pid, name }], viewer: pid, since: "",
+    projects: [], links: [], convs: [], tasks: [], docs: [],
+    update: { date: "", lines: ["Conversations, projects and tasks you share show here."] } } });
+  return slug;
+}
+async function personInvite(body) {
+  // "Share One Button" with no name: a single-use link whose taker chooses their own name.
+  if (!String(body.name || "").trim()) {
+    const claim = crypto.randomBytes(18).toString("base64url");
+    await admin.firestore().collection("onebutton_claims").doc(claim).set({ open: true, days: 7, by: who().name, created: Date.now(), used: false });
+    return [200, { link: OB_SITE + "/?claim=" + claim, open: true }];
+  }
+  const pid = String(body.name || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24);
+  if (!NAME_RE.test(pid) || pid === "jay") return [400, { error: "bad name" }];
+  const people = admin.firestore().collection("onebutton_people"), was = await people.doc(pid).get();
+  if (was.exists && was.data().revoked) return [403, { error: pid + " was removed; add them again first" }];
+  const doc = was.exists ? pid + "-" + Date.now().toString(36).slice(-6) : pid;
+  const key = crypto.randomBytes(24).toString("base64url"), claim = crypto.randomBytes(18).toString("base64url");
+  await people.doc(doc).set({ name: doc, list: pid, hash: hashKey(key), trusted: was.exists && !!was.data().trusted, site: "one-button-jay", created: Date.now(), by: who().name, revoked: false });
+  const want = String(body.slug || ""), space = SLUG_RE.test(want) && (await spaceRef(want).get()).exists ? want : await ensureSpace(pid);
+  await admin.firestore().collection("onebutton_claims").doc(claim).set({ key, device: doc, person: pid, space, days: 7, created: Date.now(), used: false });
+  PEOPLE_CACHE.clear();
+  return [200, { name: pid, link: OB_SITE + "/?claim=" + claim, space, firstTime: !was.exists }];
+}
 async function personClaim(body) {
   const id = String(body.claim || "");
   if (!/^[A-Za-z0-9_-]{24}$/.test(id)) return [400, { error: "bad link" }];
   const ref = admin.firestore().collection("onebutton_claims").doc(id);
+  const nm = String(body.name || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24);
+  const key = crypto.randomBytes(24).toString("base64url");
   const got = await admin.firestore().runTransaction(async (t) => {
     const c = await t.get(ref);
-    if (!c.exists || c.data().used || c.data().created < Date.now() - 2 * 864e5) return null;
-    t.update(ref, { used: true, usedAt: Date.now(), key: admin.firestore.FieldValue.delete() });
-    return c.data();
+    if (!c.exists || c.data().used || c.data().created < Date.now() - (c.data().days || 2) * 864e5) return null;
+    const d = c.data();
+    if (!d.open) { t.update(ref, { used: true, usedAt: Date.now(), key: admin.firestore.FieldValue.delete() }); return d; }
+    // An open link: the person names themselves, once, and that name must be free.
+    if (!NAME_RE.test(nm) || nm === "jay") return { need: "Your first name, please (letters and digits)" };
+    const pref = admin.firestore().collection("onebutton_people").doc(nm);
+    if ((await t.get(pref)).exists) return { need: "That name is taken here. Try adding a surname or initial." };
+    t.set(pref, { name: nm, list: nm, hash: hashKey(key), trusted: false, site: "one-button-jay", created: Date.now(), by: d.by || "jay", via: "open link", revoked: false });
+    t.update(ref, { used: true, usedAt: Date.now(), person: nm });
+    return { key, device: nm, person: nm, fresh: true };
   });
   if (!got) return [410, { error: "this link has been used or has run out" }];
-  return [200, { key: got.key, device: got.device }];
+  if (got.need) return [409, { needName: true, error: got.need }];
+  if (got.fresh) { PEOPLE_CACHE.clear(); got.space = await PERSON.run(JAY, () => ensureSpace(got.person)); }
+  return [200, { key: got.key, device: got.device, person: got.person || "", space: got.space || "" }];
 }
 async function personList() {
   const docs = (await admin.firestore().collection("onebutton_people").get()).docs.map((d) => { const o = d.data(); delete o.hash; return o; });
@@ -93,10 +138,12 @@ async function personRevoke(body) {
   const name = String(body.name || "").toLowerCase().trim();
   if (!NAME_RE.test(name)) return [400, { error: "bad name" }];
   await admin.firestore().collection("onebutton_people").doc(name).update({ revoked: true, revokedAt: Date.now() });
+  // Their other devices (keys from later invitation links) stop too.
+  if (name !== "jay") for (const d of (await admin.firestore().collection("onebutton_people").where("list", "==", name).get()).docs) await d.ref.update({ revoked: true, revokedAt: Date.now() });
   PEOPLE_CACHE.clear();
   return [200, { name, revoked: true }];
 }
-const PERSON_ROUTES = { add: personAdd, list: personList, revoke: personRevoke, link: personLink };
+const PERSON_ROUTES = { add: personAdd, list: personList, revoke: personRevoke, link: personLink, invite: personInvite };
 
 async function transcribe(body) {
   return transcribeBuffer(Buffer.from(String(body.audio), "base64"), String(body.mimeType || "audio/webm"));
@@ -2918,7 +2965,7 @@ async function routed(req, res, body, sp, send, me) {
       catch (e) { res.status(500).json({ error: String((e && e.message) || e) }); }
       return;
     }
-    const pe = req.path.match(/\/person\/(add|list|revoke|link)$/);
+    const pe = req.path.match(/\/person\/(add|list|revoke|link|invite)$/);
     if (pe) {
       if (!me.admin) { res.status(403).json({ error: "only Jay adds people" }); return; }
       try { send(await PERSON_ROUTES[pe[1]](body)); } catch (e) { res.status(500).json({ error: String((e && e.message) || e) }); }
