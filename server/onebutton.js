@@ -460,15 +460,34 @@ async function clip(req) {
  * Claude. Anything else becomes a task with the photo on it, waiting to be placed. The picture
  * itself sits in Storage (rules deny all) until the laptop files it into the vault. */
 const photoFile = (id) => admin.storage().bucket().file(`onebutton/photos/${id}.jpg`);
+/* The Canopy Concept Cards and their meanings, from Marianne the Librarian's deck. A photo of a
+ * card is matched to its meaning; Marianne's readings choose from the same deck. */
+const CARD_DECK = (() => { try { return require("./cards.json"); } catch { return []; } })();
+const cardNorm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+function matchCard(title) {
+  const n = cardNorm(title); if (!n || n.length < 3) return null;
+  let best = null, score = 0;
+  for (const c of CARD_DECK) {
+    const m = cardNorm(c.title);
+    const s = m === n ? 100 : (m.includes(n) || n.includes(m)) ? 60 * Math.min(m.length, n.length) / Math.max(m.length, n.length) : 0;
+    if (s > score) { score = s; best = c; }
+  }
+  if (score >= 30) return best;
+  // Word overlap, for a card read in pieces.
+  const words = String(title).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+  for (const c of CARD_DECK) { const cw = c.title.toLowerCase(); const s = words.filter((w) => cw.includes(w)).length; if (s >= 2 && s * 10 > score) { score = s * 10; best = c; } }
+  return score >= 20 ? best : null;
+}
 const PHOTO_MAX = 8 * 1024 * 1024;
 const PHOTO_SYS = `You look at one photo taken on a phone and say what it is and what to do with it. Reply with JSON only:
-{"kind": "receipt" | "sketch" | "document" | "place" | "thing" | "other",
+{"kind": "receipt" | "sketch" | "card" | "document" | "place" | "thing" | "other",
+ "card": {"title": "only for a hand-lettered concept card: its main title exactly as written, keeping odd spellings and wordplay"},
  "title": "at most 8 words, what this is",
  "text": "what it shows or says, in plain English, at most 120 words; for a document or sketch, its content",
  "receipt": {"shop": "", "date": "YYYY-MM-DD if printed, else empty", "total": 0, "currency": "ISO code or symbol as printed", "items": [{"name": "", "price": 0}]},
  "sketch": {"instructions": ["each step or element the sketch asks for, as a clear sentence"]},
  "task": "if the photo is plainly something to do (a broken thing, a note to self), one task starting with a verb, else empty"}
-Only fill "receipt" for a receipt or invoice, only "sketch" for a drawing, diagram or wireframe. Numbers as numbers. Never invent prices or words you cannot read; leave them out.`;
+Only fill "receipt" for a receipt or invoice, only "sketch" for a drawing, diagram or wireframe, only "card" for a single hand-lettered card with a title (often a pun or made-up word). Numbers as numbers. Never invent prices or words you cannot read; leave them out.`;
 // A receipt's printed date, kept if it is a real date in this year or last; a misread year keeps its month and day.
 const saneDate = (d, created) => {
   d = String(d || ""); const today = new Date(created).toISOString().slice(0, 10);
@@ -497,6 +516,9 @@ async function photoPantry(req) {
   const aisles = PANTRY_AISLES.split(" | ");
   const items = (Array.isArray(seen && seen.items) ? seen.items : []).slice(0, 60)
     .map((i) => ({ text: String((i && i.text) || "").trim().slice(0, 120), aisle: aisles.includes(i && i.aisle) ? i.aisle : "" })).filter((i) => i.text);
+  // The photo is kept (privately, like every photo), with what was seen in it.
+  try { const id = "ph" + Date.now().toString(36); await photoFile(id).save(buf, { contentType: mime, resumable: false });
+    await listRef().collection("photos").doc(id).set({ id, created: Date.now(), mime, kind: "pantry", title: "Pantry photo", text: items.map((i) => i.text).join(", ").slice(0, 2000), items, collected: false }); } catch {}
   return [200, { items, text: items.length ? items.length + " things seen" : "Could not make out any food in that photo" }];
 }
 
@@ -516,9 +538,35 @@ async function photo(req) {
   });
   const d = await r.json().catch(() => ({}));
   const seen = r.ok ? parseJSON(d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) : null;
-  const kind = ["receipt", "sketch", "document", "place", "thing", "other"].includes(seen && seen.kind) ? seen.kind : "other";
+  const kind = ["receipt", "sketch", "card", "document", "place", "thing", "other"].includes(seen && seen.kind) ? seen.kind : "other";
   const doc = { id, created, mime, kind, title: String((seen && seen.title) || "A photo").slice(0, 120), text: String((seen && seen.text) || "").slice(0, 2000), collected: false };
+  const card = kind === "card" ? matchCard(seen.card && seen.card.title) || matchCard(doc.title) : null;
+  if (card) { doc.card = card.id; doc.title = card.title; }
   let out = { ...doc, text: "" };
+  // Taken for a shared space: it goes there, picture and all, for everyone in the space.
+  const into = String(req.query.space || "");
+  if (SLUG_RE.test(into)) {
+    const topic = String(req.query.topic || "").slice(0, 40), me = who().name;
+    let host = null;
+    if ((await spaceRef(into).get()).exists) host = who(); else { const hit = (await spacesForMe()).find((x) => x.snap.id === into); if (hit) host = { name: hit.host, list: hit.host, trusted: true, admin: hit.host === "jay" }; }
+    if (host) {
+      const sp = { id: "p" + id, photo: id, topic, by: me, at: created, when: new Date(created).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) };
+      const item = card ? { ...sp, kind: "Card", card: card.id, title: card.title, wordplay: card.wordplay, reading: card.reading, section: card.section, body: doc.text }
+        : { ...sp, kind: "Photo", title: doc.title, body: doc.text, ...(seen && seen.receipt && kind === "receipt" ? { receipt: seen.receipt } : {}) };
+      await PERSON.run(host, () => pushAdded(into, { docs: [item] }));
+      doc.space = into;
+      await listRef().collection("photos").doc(id).set(doc);
+      const name = host.name === me ? ((await PERSON.run(host, () => spaceRef(into).get())).data() || {}).name : host.name;
+      return [200, { ...out, space: into, text: card ? `Card: ${card.title}. ${card.reading} Put in the space${name ? " with " + name : ""}.` : `${doc.title}. Put in the space${name ? " with " + name : ""}.` }];
+    }
+  }
+  if (card) {
+    const task = cleanTask({ id: String(created), text: `Card: ${card.title}`, cat: "check", done: false, ts: created, updated: created, subs: [], due: "", place: "", note: card.reading, photo: id, hold: true });
+    await listRef().collection("tasks").doc(task.id).set(task);
+    doc.task = task.id;
+    await listRef().collection("photos").doc(id).set(doc);
+    return [200, { ...out, task: task.id, text: `Card: ${card.title}. ${card.reading}` }];
+  }
   if (kind === "receipt" && seen.receipt) {
     const rc = seen.receipt, num = (x) => Math.max(0, Number(x) || 0);
     const rec = { id, photo: id, created, shop: String(rc.shop || "").slice(0, 120), date: saneDate(rc.date, created),
@@ -960,7 +1008,7 @@ async function spGet(body) {
   const slug = String(body.slug || "");
   const s = await spaceRef(slug).get();
   // The host's own view carries what members added, and notes that the host has now seen it.
-  if (s.exists) { spaceRef(slug).set({ hostSeen: Date.now() }, { merge: true }).catch(() => {}); return [200, withAdded(await migrateSpace(slug, s))]; }
+  if (s.exists) { spaceRef(slug).set({ hostSeen: Date.now() }, { merge: true }).catch(() => {}); const d = withAdded(await migrateSpace(slug, s)); return [200, { ...d, docs: withImgs(d.docs) }]; }
   // Not mine: a space someone else opened for me shows the member's view, held parts removed.
   // A member opening a space someone else hosts, with their own One Button key: served from the
   // host's list (where the space lives), as the member's view, held parts removed.
@@ -1577,10 +1625,14 @@ After the intro the episode is only the recordings: no narration between them, s
 const podRef = (slug, topic) => listRef().collection("podcasts").doc(slug + "__" + (topic || "all"));
 const podFile = (slug, id, n) => admin.storage().bucket().file(`onebutton/podcasts/${slug}/${id}/${n}.wav`);
 // A signed address for one stored audio file: the path and an expiry, sealed with the app's key.
-const seal = (path, hours = 8) => { const exp = Date.now() + hours * 3600e3, p = Buffer.from(path).toString("base64url"); return `${p}.${exp}.${crypto.createHmac("sha256", ONE_BUTTON_KEY.value()).update(p + "." + exp).digest("base64url")}`; };
+// The expiry is rounded up to the hour, so the same file keeps the same address for an hour and
+// a page that refreshes does not redraw (or refetch) its pictures.
+const seal = (path, hours = 8) => { const exp = Math.ceil((Date.now() + hours * 3600e3) / 3600e3) * 3600e3, p = Buffer.from(path).toString("base64url"); return `${p}.${exp}.${crypto.createHmac("sha256", ONE_BUTTON_KEY.value()).update(p + "." + exp).digest("base64url")}`; };
 const unseal = (tk) => { const [p, exp, sig] = String(tk || "").split("."); if (!p || !exp || !sig || +exp < Date.now()) return null;
   const want = crypto.createHmac("sha256", ONE_BUTTON_KEY.value()).update(p + "." + exp).digest("base64url"); if (sig.length !== want.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want))) return null;
-  const path = Buffer.from(p, "base64url").toString(); return /^onebutton\/(interviews|spaces|podcasts)\/[\w\/.-]+$/.test(path) ? path : null; };
+  const path = Buffer.from(p, "base64url").toString(); return /^onebutton\/(interviews|spaces|podcasts|photos)\/[\w\/.-]+$/.test(path) ? path : null; };
+// Pictures in a space are shown through signed addresses that last a few hours.
+const withImgs = (docs) => (docs || []).map((x) => x && x.photo ? { ...x, img: STREAM_BASE + seal(`onebutton/photos/${x.photo}.jpg`) } : x);
 const STREAM_BASE = "https://us-central1-canopy-website-ef7a8.cloudfunctions.net/oneButton/api/space/stream?t=";
 async function spStream(req, res) {
   const path = unseal(req.query.t);
@@ -1873,6 +1925,45 @@ async function spListened(req, body) {
   if (id) { const d = (await listenCol().doc(id).get()).data(); return d ? [200, withSrc(d)] : [404, { error: "that session is gone" }]; }
   const got = (await listenCol().orderBy("at", "desc").limit(10).get()).docs.map((x) => ({ id: x.id, q: x.data().q, title: x.data().title, at: x.data().at }));
   return [200, { recent: got }];
+}
+
+/* ---------- Marianne the Librarian reads a space ----------
+ * She reads the conversations (never the private passages) and lays out a few cards from the
+ * Canopy Concept deck for where the conversations are, each tied to the moments it speaks to. */
+const MARIANNE_SYS = (names) => `You are Marianne the Librarian, keeper of the Canopy Concept Cards. You read conversations between ${names} and lay out cards for where they are now. Reply with JSON only:
+{"reading": "80 to 150 words, warm and plain: what you see in these conversations and how the cards speak to it",
+ "cards": [{"id": "the card's id exactly as listed", "why": "one or two sentences tying this card to what was actually said", "refs": ["c2@431"]}]}
+Choose 3 to 5 cards from the deck below, only by their listed ids, each for a different reason. refs are the markers of the lines it speaks to, exactly as written, up to 3. Never anything negative or reflective about any person's personality, character or state of mind. No em dashes.`;
+async function spMarianne(req, body, visitor) {
+  const slug = String(body.slug || ""), topic = String(body.topic || "").slice(0, 40);
+  if (!SLUG_RE.test(slug)) return [400, { error: "bad space" }];
+  const by = await actorFor(req, body, slug, visitor);
+  const s = await migrateSpace(slug, await spaceRef(slug).get());
+  if (!s.exists) return [404, { error: "no such space" }];
+  const d = withAdded(s), people = ((s.data().data || {}).people || []);
+  const tp = topic ? [...((d.synth || {}).topics || []), ...(d.topics || [])].find((x) => x.slug === topic) : null;
+  const words = tp ? (tp.words || []).map((w) => String(w).toLowerCase()) : [];
+  const fits = (c) => !topic || c.topic === topic || ((d.convTopics || {})[c.id] || []).includes(topic) || words.some((w) => [c.title, c.summary, ...(c.points || [])].join(" ").toLowerCase().includes(w));
+  const parts = [];
+  for (const c of (d.convs || []).filter((x) => !x.held && fits(x))) {
+    const w = await wordsFor(slug, c), segs = (w.segments || []).filter((x) => x && x[1]);
+    const step = Math.max(1, Math.ceil(segs.length / 90));
+    parts.push(`## ${c.id}: ${c.title} (${c.date})\nSummary: ${String(c.summary || "").slice(0, 600)}\n${segs.filter((_, i) => i % step === 0).slice(0, 90).map(([at, x]) => `[${c.id}@${Math.round(at)}] ${String(x).slice(0, 300)}`).join("\n")}`);
+  }
+  if (!parts.length) return [200, { none: true, error: "no conversations here yet for Marianne to read" }];
+  const deck = CARD_DECK.map((c) => `${c.id} | ${c.title} | ${c.reading}`).join("\n");
+  const out = await chat({ messages: [{ role: "system", content: MARIANNE_SYS(people.map((p) => p.name).join(" and ")) + "\n\nThe deck:\n" + deck }, { role: "user", content: parts.join("\n\n").slice(0, 70000) }] }, 2500);
+  let got = null;
+  try { got = parseJSON(JSON.parse(out.text).choices[0].message.content); } catch {}
+  if (!got || !Array.isArray(got.cards)) return [502, { error: "Marianne could not read it this time; ask again" }];
+  const cards = got.cards.map((x) => { const c = CARD_DECK.find((k) => k.id === String(x && x.id)); if (!c) return null;
+    const refs = (Array.isArray(x.refs) ? x.refs : []).map((r) => String(r).replace(/[\[\]]/g, "").match(/^([\w-]+)@(\d+(?:\.\d+)?)$/)).filter(Boolean).slice(0, 3).map((m) => ({ conv: m[1], at: Math.round(+m[2]) }));
+    return { id: c.id, title: c.title, wordplay: c.wordplay, reading: c.reading, section: c.section, why: String(x.why || "").slice(0, 400), refs }; }).filter(Boolean).slice(0, 5);
+  if (!cards.length) return [502, { error: "Marianne could not read it this time; ask again" }];
+  const at = Date.now(), id = "r" + at.toString(36);
+  const doc = { id, kind: "Reading", title: "Marianne's reading" + (tp ? ": " + tp.name : ""), body: String(got.reading || "").slice(0, 1500), cards, topic, by: by.id, at, when: new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) };
+  await pushAdded(slug, { docs: [doc] });
+  return [200, { ok: true, reading: doc }];
 }
 
 async function spAskAll(req, body, visitor) {
@@ -2765,7 +2856,7 @@ async function spServe(slug, s) {
     }
   } catch {}
   delete d.pendingShares;
-  return [200, { ...d, banner: "", docs: (d.docs || []).filter(shown), convs: (d.convs || []).filter(keep), tasks: [...(d.tasks || []).filter(shown), ...live], projects, marks: (d.marks || []).filter((m) => !hidden.has(m.conv)) }];
+  return [200, { ...d, banner: "", docs: withImgs((d.docs || []).filter(shown)), convs: (d.convs || []).filter(keep), tasks: [...(d.tasks || []).filter(shown), ...live], projects, marks: (d.marks || []).filter((m) => !hidden.has(m.conv)) }];
 }
 
 /* Projects Jay stewards. Saved ones live in projects/{id}; the rest are proposals, worked out fresh
@@ -2901,7 +2992,7 @@ exports.oneButton = onRequest(
       try { send(await searchAll(req, body, visitor)); } catch (e) { res.status((e && e.code) || 500).json({ error: String((e && e.message) || e) }); }
       return;
     }
-    if (sp && ["record", "add", "highlight", "consent", "publish", "transcript", "audio", "export", "search", "harvest", "projseed", "seeds", "seedok", "seedto", "seeddrop", "mark", "markset", "clip", "bite", "bitepub", "present", "ask", "podcast", "allconvs", "gather", "listen", "listened", "askall", "asked", "place", "release", "synth", "synthset", "bridge", "mentions", "mentionset"].includes(sp[1])) {
+    if (sp && ["record", "add", "highlight", "consent", "publish", "transcript", "audio", "export", "search", "harvest", "projseed", "seeds", "seedok", "seedto", "seeddrop", "mark", "markset", "clip", "bite", "bitepub", "present", "ask", "podcast", "allconvs", "gather", "listen", "listened", "marianne", "askall", "asked", "place", "release", "synth", "synthset", "bridge", "mentions", "mentionset"].includes(sp[1])) {
       // A member puts something in, or takes something out: their Weave sign-in (or the host's
       // key) is the lock.
       const visitor = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "";
@@ -2913,7 +3004,7 @@ exports.oneButton = onRequest(
         seedok: () => spSeedOk(req, body, visitor), seedto: () => spSeedTo(req, body, visitor), seeddrop: () => spSeedDrop(req, body, visitor),
         mark: () => spMark(req, body, visitor), markset: () => spMarkSet(req, body, visitor), clip: () => spClip(req, visitor), bitepub: () => spBitePublish(req, body, visitor),
         present: () => spPresent(req, body, visitor), ask: () => spAsk(req, body, visitor),
-        askall: () => spAskAll(req, body, visitor), podcast: () => spPodcast(req, body, visitor), allconvs: () => spAllConvs(req), gather: () => spGather(req, body), listen: () => spListen(req, body), listened: () => spListened(req, body), asked: () => spAskAllList(), place: () => spPlace(req, body, visitor), release: () => spRelease(req, body, visitor),
+        askall: () => spAskAll(req, body, visitor), podcast: () => spPodcast(req, body, visitor), allconvs: () => spAllConvs(req), gather: () => spGather(req, body), listen: () => spListen(req, body), listened: () => spListened(req, body), marianne: () => spMarianne(req, body, visitor), asked: () => spAskAllList(), place: () => spPlace(req, body, visitor), release: () => spRelease(req, body, visitor),
         synth: () => spSynth(req, body, visitor), synthset: () => spSynthSet(req, body, visitor), bridge: () => spBridge(req, body, visitor),
         mentions: () => spMentions(req, body, visitor), mentionset: () => spMentionSet(req, body, visitor) }[sp[1]];
       try { send(await fn()); }

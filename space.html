@@ -16,6 +16,14 @@
     padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
   .wrap{max-width:720px;margin:0 auto;padding:0 16px 64px}
   .pod{border-width:2px}
+  .pics{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .pic{border:1px solid var(--line);padding:8px;background:var(--paper)}
+  .pic img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;background:var(--surface,#f5f5f5)}
+  .pic.card{border:2px solid var(--ink)}
+  .pic .ct{font:800 17px/1.15 "Inter Tight",sans-serif;margin:8px 0 4px;overflow-wrap:anywhere}
+  .pic .cr{font-size:14px;line-height:1.45}
+  .rcard{border-left:3px solid var(--spark);padding:6px 0 6px 12px;margin:12px 0}
+  .rcard .ct{font:800 18px/1.15 "Inter Tight",sans-serif}
   html.podonly .bar,html.podonly #body>*:not(#pod),html.podonly .wrap>*:not(#body):not(#gate),html.podonly body>*:not(.wrap){display:none!important}
   html.podonly .wrap{padding-top:0}
   html.podonly #pod{margin:0}
@@ -136,7 +144,8 @@
   <div class="box" id="put">
     <span class="tag">Add to this space</span>
     <p style="margin:6px 0 0">Record a conversation or a thought straight into the space, or type a project, a note or a task. Both of you see it within a minute.</p>
-    <div class="row"><button id="put-rec">Record into this space</button><button id="put-proj">Add a project</button><button id="put-note">Add a note or task</button></div>
+    <div class="row"><button id="put-rec">Record into this space</button><button id="put-proj">Add a project</button><button id="put-note">Add a note or task</button><button id="put-photo">Add a photo or card</button></div>
+    <input type="file" id="put-photo-in" accept="image/*" capture="environment" hidden>
     <p class="tag" style="margin:10px 0 0" id="put-say"></p>
     <div class="hidden" id="put-form"></div>
   </div>
@@ -175,6 +184,9 @@
   <div class="row hidden" id="ask-where" style="margin:8px 0 0"><span class="tag">Ask</span><button class="on" data-aw="here">This space</button><button data-aw="all">All my shared conversations</button></div>
   <div id="ask-earlier"></div>
   <div id="ask-out"></div>
+  <div id="readings-wrap" class="hidden"><h2>Marianne's readings</h2><p class="lede">Marianne the Librarian reads these conversations and lays out cards from the Canopy Concept deck for where you are, each tied to the moments it speaks to.</p>
+    <div class="row"><button id="ask-marianne">Ask Marianne for a reading</button><span class="tag" id="marianne-say"></span></div><div id="readings"></div></div>
+  <div id="pics-wrap" class="hidden"><h2>Photos and cards</h2><p class="lede">Photos and cards put into this space. A card brings its meaning with it.</p><div id="pics" class="pics"></div></div>
   <div id="found-wrap" class="hidden"><h2>Found by asking</h2><p class="lede">Points picked from answers and put here, each with the conversation it came from.</p><div id="found"></div></div>
 
   <h2>People mentioned</h2>
@@ -658,8 +670,24 @@ if(sels.length&&ACT&&ACT.key){post('list',{},headers()).then(l=>{const opts=(l.s
     <p class="tag" style="text-transform:none;letter-spacing:0;margin:6px 0 0">Asked: ${esc(d.ask||'')}</p>
     ${HOST&&d.held?`<div class="row"><button data-release="${esc(d.id)}">Share with ${esc(others)}</button></div>`:''}</div>`).join('');
   $('#found').querySelectorAll('[data-release]').forEach(b=>b.onclick=()=>{b.disabled=true;actCall('release',{slug:SLUG,id:b.dataset.release}).then(()=>{say('Shared with the space.');if(REFRESH)REFRESH().then(x=>show(x)).catch(()=>{});}).catch(e=>{b.disabled=false;say(e.message);});});wireProv();}
+{// Photos and cards put into the space, newest first; a card shows its meaning.
+  const px=D.docs.filter(d=>d.kind==='Photo'||d.kind==='Card').slice().reverse();
+  $('#pics-wrap').classList.toggle('hidden',!px.length);
+  $('#pics').innerHTML=px.map(d=>`<div class="pic${d.kind==='Card'?' card':''}">${d.img?`<a href="${esc(d.img)}" target="_blank" rel="noopener"><img src="${esc(d.img)}" alt="${esc(d.title)}" loading="lazy"></a>`:''}
+    <div class="ct">${esc(d.title)}</div>${d.kind==='Card'?`${d.wordplay?`<div class="tag" style="text-transform:none;letter-spacing:0">${esc(d.wordplay)}</div>`:''}<div class="cr">${esc(d.reading||'')}</div>`:`<div class="cr">${esc(String(d.body||'').slice(0,220))}</div>`}
+    <div class="tag" style="margin-top:6px">${esc(d.when||'')}${byTag(d)}</div></div>`).join('');
+  // Marianne's readings, newest first, each card with the moments it speaks to.
+  const rd=D.docs.filter(d=>d.kind==='Reading').slice().reverse();
+  $('#readings-wrap').classList.toggle('hidden',!ACT&&!rd.length);
+  $('#readings').innerHTML=rd.slice(0,3).map((r,k)=>`<div class="box"${k?' style="opacity:.85"':''}><span class="tag">${esc(r.when||'')}</span><h3>${esc(r.title)}</h3><div style="white-space:pre-wrap">${esc(r.body||'')}</div>
+    ${(r.cards||[]).map(c=>`<div class="rcard"><div class="ct">${esc(c.title)}</div>${c.wordplay?`<div class="tag" style="text-transform:none;letter-spacing:0">${esc(c.wordplay)}</div>`:''}<div class="cr" style="font-style:italic;margin:2px 0">${esc(c.reading||'')}</div><div>${esc(c.why||'')}</div>
+      ${(c.refs||[]).filter(x=>conv(x.conv).title).map(x=>`<button class="link" data-prov="${esc(x.conv)}" data-at="${x.at}">${esc(conv(x.conv).title)} ${mmss(x.at)}</button>`).join(' ')}</div>`).join('')}</div>`).join('');
+  const am=$('#ask-marianne');if(am)am.onclick=()=>{am.disabled=true;$('#marianne-say').textContent='Marianne is reading the conversations…';
+    actCall('marianne',{slug:SLUG,topic:TOPIC||''}).then(()=>{$('#marianne-say').textContent='';am.disabled=false;if(REFRESH)REFRESH().then(x=>show(x)).catch(()=>{});})
+      .catch(e=>{am.disabled=false;$('#marianne-say').textContent=e.message;});};
+  wireProv();}
 $('#distilled').innerHTML=
-  D.docs.filter(d=>!['Highlight','Presentation','Bridge','From another conversation','Finding','Share'].includes(d.kind)).map(d=>`<details class="box"><summary>${esc(d.title)}</summary><span class="tag">${esc(d.kind||'Drafted')} ${esc(d.when||'')}${fromTag(d.from)}${byTag(d)}</span>${d.note?`<p class="next">${esc(d.note)}</p>`:''}<div class="tr">${esc(d.body)}</div>${provLine(d)}</details>`).join('')+
+  D.docs.filter(d=>!['Highlight','Presentation','Bridge','From another conversation','Finding','Share','Photo','Card','Reading'].includes(d.kind)).map(d=>`<details class="box"><summary>${esc(d.title)}</summary><span class="tag">${esc(d.kind||'Drafted')} ${esc(d.when||'')}${fromTag(d.from)}${byTag(d)}</span>${d.note?`<p class="next">${esc(d.note)}</p>`:''}<div class="tr">${esc(d.body)}</div>${provLine(d)}</details>`).join('')+
   `<details class="box" open><summary>Key points</summary><ul class="pts">${D.convs.flatMap(c=>c.points).map(p=>`<li>${esc(p)}</li>`).join('')}</ul></details>`+
   `<details class="box"><summary>Words worth keeping</summary>${D.convs.flatMap(c=>c.quotes.map(q=>`<div class="quote">${esc(q)}<br><span class="tag">${esc(c.title)}</span></div>`)).join('')}</details>`;
 
@@ -736,7 +764,16 @@ function addTo(kind){
       .catch(e=>{$('#pf-go').disabled=false;say('That did not go up: '+String((e&&e.message)||e));});};
   $('#pf-t').focus();
 }
-document.addEventListener('DOMContentLoaded',()=>{$('#put-rec').onclick=recordInto;$('#put-proj').onclick=()=>addTo('project');$('#put-note').onclick=()=>addTo('note');});
+document.addEventListener('DOMContentLoaded',()=>{$('#put-rec').onclick=recordInto;$('#put-proj').onclick=()=>addTo('project');$('#put-note').onclick=()=>addTo('note');
+  // A photo or a card into this space: inside the One Button app its own camera takes it; in a
+  // browser, the phone's camera through the file picker. It needs a One Button key.
+  const TP=new URLSearchParams(location.search).get('topic')||'';
+  $('#put-photo').onclick=()=>{try{if(window.top!==window&&window.top.obPhotoInto){window.top.obPhotoInto(SLUG,TP);say('Take the photo; it comes into this space.');return;}}catch(e){}
+    if(!appKey()){say('Open this space from One Button to add photos.');return;}$('#put-photo-in').click();};
+  $('#put-photo-in').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;say('Reading the photo…');
+    fetch(API.replace(/space\/$/,'')+'photo?mime='+encodeURIComponent(f.type||'image/jpeg')+'&space='+encodeURIComponent(SLUG)+'&topic='+encodeURIComponent(TP),{method:'POST',headers:{'Content-Type':f.type||'image/jpeg','x-ob-key':appKey()},body:f})
+      .then(r=>r.json().then(d=>r.ok?d:Promise.reject(new Error(d.text||d.error||r.status)))).then(d=>{say(d.text||'Added.');if(REFRESH)REFRESH().then(x=>show(x)).catch(()=>{});})
+      .catch(err=>say('Could not add the photo: '+err.message));e.target.value='';};});
 // A link from Jay's "Send link" carries the person's name and account code after the #, a part of
 // the address that never reaches a server. It signs in on any device, every time, and this browser
 // remembers it, so one share is enough.

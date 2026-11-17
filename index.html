@@ -2706,10 +2706,14 @@ function pickPhotoKind(){let box=$('#pk');
 const camSay=s=>{showToast(s);if(lock.classList.contains('on'))lkSay(s);};
 camIn.onchange=async()=>{const f=camIn.files&&camIn.files[0];if(!f)return;
   try{await sendPhoto(await shrinkImage(f,1600,.85));}catch(e){camSay('Could not read the photo');}};
+// A photo asked for from inside a shared space goes into that space.
+let PHOTO_INTO=null;
+window.obPhotoInto=(slug,topic)=>{PHOTO_INTO={slug,topic:topic||''};takePhoto('task');};
 async function sendPhoto(blob){camBusy=true;
   if(camKind==='pantry'){await sendPantryPhoto(blob);camBusy=false;return;}
   camSay('Reading the photo...');
-  try{const r=await fetch(API+'/api/photo?mime=image/jpeg',{method:'POST',headers:{'Content-Type':'image/jpeg','x-ob-key':obKey()},body:blob});
+  const into=PHOTO_INTO;PHOTO_INTO=null;
+  try{const r=await fetch(API+'/api/photo?mime=image/jpeg'+(into?'&space='+encodeURIComponent(into.slug)+'&topic='+encodeURIComponent(into.topic):''),{method:'POST',headers:{'Content-Type':'image/jpeg','x-ob-key':obKey()},body:blob});
     const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.text||d.error||'failed');
     camSay(d.text||'Saved');PHOTOS=null;syncNow();ivRefresh();}
   catch(e){camSay('Could not send the photo: '+(e.message||'try again'));}
