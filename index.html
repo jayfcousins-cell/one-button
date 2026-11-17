@@ -103,7 +103,6 @@
   .al-row .tbtn{min-height:44px}
   .sheet{position:fixed;inset:0;z-index:5;background:var(--cream);color:var(--ink);transform:translateY(100%);transition:transform .32s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
   .sheet.open{transform:translateY(0)}
-  .lk-cam{width:52px;height:52px;border-radius:50%;border:1px solid currentColor;background:transparent;color:inherit;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-right:14px;align-self:center}
   .an-card{border-bottom:1px solid var(--line);padding:14px 0}
   .an-card.new{border-left:3px solid var(--spark);padding-left:12px}
   .an-q{font-weight:700;margin:4px 0 6px;overflow-wrap:anywhere}
@@ -324,7 +323,6 @@
   <div class="bar">
     <div class="mark">One <b>Button</b></div>
     <div class="ico-row">
-      <button class="ico-btn" data-camera title="Camera" aria-label="Take a photo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="ico-btn" id="open-today" title="Today" aria-label="Today"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>
       <button class="ico-btn" id="open-proj" title="Projects" aria-label="Projects"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></button>
       <button class="ico-btn" id="open-lock" title="Lock screen view" aria-label="Lock screen view">&#9638;</button>
@@ -541,9 +539,8 @@
   <div class="lk-head"><span>To do</span><span id="lk-count"></span></div>
   <div class="lk-list" id="lk-list"></div>
   <div class="lk-foot">
-    <div class="lk-status" id="lk-status" aria-live="polite">hold to speak and let go, or tap to start and tap to stop</div>
+    <div class="lk-status" id="lk-status" aria-live="polite">hold to speak and let go, tap to start and stop, double tap for the camera</div>
     <div class="lk-row">
-      <button class="lk-cam" data-camera aria-label="Take a photo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
       <button class="lk-orb" id="lk-orb" aria-label="Record a task"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
     </div>
   </div>
@@ -749,7 +746,7 @@ function listen(){
       mainLive||(statusEl.textContent='a conversation: writing it up...');ivUploadWeb(blob,began).then(ok=>{mainLive||(statusEl.textContent=ok?'tap to speak':'could not send it, tap to try again');});}
   });
 }
-orb.addEventListener('click',()=>{ if(orb.held){orb.held=false;return;} if(mainLive){try{mainRec.stop()}catch{}} else listen(); });
+setTimeout(()=>tapOrDouble(orb,()=>{ if(mainLive){try{mainRec.stop()}catch{}} else listen(); },()=>takePhoto(),()=>mainLive),0);
 
 async function ask(messages){
   const res=await fetch(CHAT_ENDPOINT,{
@@ -2213,11 +2210,10 @@ async function nativeShort(name){const id=ivId(name);IVS[id]={status:'task'};LS.
   NATIVE.deleteInterview(name);delete IVS[id];LS.set('ob-ivs',IVS);lockText(t);}
 
 // One button: tap to speak, tap to stop. Short is tasks, long is a conversation written up.
-$('#lk-orb').onclick=()=>{
-  if($('#lk-orb').held){$('#lk-orb').held=false;return;} // it was held: the camera opened instead
+tapOrDouble($('#lk-orb'),()=>{
   if(NATIVE&&NATIVE.readInterview&&!lkLive){intOn?NATIVE.stopInterview():NATIVE.startInterview();return;}
   lockRecord();
-};
+},()=>takePhoto(),()=>lkLive||intOn);
 
 /* Interviews (stage 7). Nothing leaves the phone until Jay taps Share or Process. A processed
    interview's note lives on the server until the laptop helper files it into the vault; Ask
@@ -2666,8 +2662,8 @@ function holdFor(el,fn){let tm=0;
   ['pointerup','pointerleave','pointercancel'].forEach(e=>el.addEventListener(e,()=>clearTimeout(tm)));
   el.oncontextmenu=e=>e.preventDefault();}
 // Hold the button, speak, let go: it goes. A quick tap still starts a recording that the next tap
-// stops (and on the lock screen in the phone app, a tap starts a long recording). The camera has
-// its own icon now, next to the button.
+// stops (and on the lock screen in the phone app, a tap starts a long recording). A double tap is
+// the camera.
 function holdToTalk(el,start,stop,live){let tm=0,talking=false;
   el.addEventListener('pointerdown',()=>{el.held=false;talking=false;clearTimeout(tm);
     tm=setTimeout(()=>{if(live())return;el.held=true;talking=true;try{navigator.vibrate&&navigator.vibrate(20);}catch{}start();},260);});
@@ -2676,7 +2672,13 @@ function holdToTalk(el,start,stop,live){let tm=0,talking=false;
   el.oncontextmenu=e=>e.preventDefault();}
 holdToTalk(orb,()=>listen(),()=>{if(mainLive&&mainRec)mainRec.stop();},()=>mainLive);
 holdToTalk($('#lk-orb'),()=>lockRecord(),()=>{if(lkLive&&lkRec)lkRec.stop();},()=>lkLive);
-document.querySelectorAll('[data-camera]').forEach(b=>b.onclick=()=>takePhoto());
+// One button: a double tap is the camera. A single tap waits a moment for a second one, unless a
+// recording is running, when it stops it at once.
+function tapOrDouble(el,single,double,busy){let tm=0;
+  el.addEventListener('click',()=>{if(el.held){el.held=false;return;}
+    if(busy()){clearTimeout(tm);tm=0;single();return;}
+    if(tm){clearTimeout(tm);tm=0;try{navigator.vibrate&&navigator.vibrate([15,40,15]);}catch{}double();return;}
+    tm=setTimeout(()=>{tm=0;single();},280);});}
 // The choice, over everything (the lock screen too): one tap, then the camera.
 function pickPhotoKind(){let box=$('#pk');
   if(!box){box=document.createElement('div');box.id='pk';box.className='vf pick';
